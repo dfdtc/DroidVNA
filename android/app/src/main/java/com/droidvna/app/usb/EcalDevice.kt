@@ -144,6 +144,9 @@ class EcalDevice private constructor(
         if (streamed != null && streamed.size == count) {
             return EcalCoefficients.standard(param, kind, streamed)
         }
+        // Stream was truncated or unusable; make sure no late stream lines leak into
+        // the point-by-point queries that follow.
+        flush()
         // Older firmware or a failed stream: read point by point.
         val points = ArrayList<Pair<Long, List<Complex>>>(count)
         for (i in 0 until count) {
