@@ -1,0 +1,45 @@
+name: 功能请求
+description: 提出新功能、硬件适配或交互改进建议
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请先说明使用场景和目标，而不只是实现方式。这样更容易判断优先级。
+  - type: textarea
+    id: problem
+    attributes:
+      label: 要解决的问题
+      description: 现在哪里不方便？在什么设备/场景下遇到？
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 建议的方案
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 考虑过的替代方案
+  - type: dropdown
+    id: area
+    attributes:
+      label: 涉及范围
+      multiple: true
+      options:
+        - USB / 设备连接
+        - 扫描与图表
+        - 校准（SOL / .cal / 电子校准件）
+        - 导出
+        - UI / 触摸交互
+        - 文档 / 构建
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 确认
+      options:
+        - label: 我已搜索现有 issue，没有发现相同建议。
+          required: true

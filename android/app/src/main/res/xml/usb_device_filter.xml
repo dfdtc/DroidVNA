@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <usb-device vendor-id="1155" product-id="22094" /> <!-- 0x0483:0x564E -->
+    <usb-device vendor-id="1155" product-id="16673" /> <!-- 0x0483:0x4121 -->
+    <usb-device vendor-id="4617" product-id="16673" /> <!-- 0x1209:0x4121 -->
+    <usb-device vendor-id="13951" product-id="512" /> <!-- 0x367F:0x0200 Harogic B60 -->
+</resources>
