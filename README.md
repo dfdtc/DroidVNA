@@ -30,9 +30,9 @@
 
 ## 项目状态
 
-- 当前版本 **0.4.0**（versionCode 5），要求 Android 8.0（API 26）及以上。
-- 仓库内提供预构建的 debug APK：[dist/LibreVNA-Mobile-0.4.0-debug.apk](dist/LibreVNA-Mobile-0.4.0-debug.apk)，也可以从 GitHub Releases 下载。
-- 已在 Xiaomi Pad（Android 17）+ Harogic B60（FW 1.8.6）+ ECB-60（FW 0.3.2）上完成真机验证；LibreVNA 官方硬件尚未上机实测。
+- 当前版本 **0.4.1**（versionCode 6），要求 Android 8.0（API 26）及以上。
+- 仓库内提供预构建的 debug APK：[dist/LibreVNA-Mobile-0.4.1-debug.apk](dist/LibreVNA-Mobile-0.4.1-debug.apk)，也可以从 GitHub Releases 下载。
+- 已在 Xiaomi Pad（Android 17）+ Harogic B60（FW 1.8.6）上完成真机验证；ECB-60（FW 0.3.2）的 USB、系数读取和校准流程已实机跑通，但 0.4.0 及之前的校准结果存在 Smith 杂散，0.4.1 已改为 all-port 标准切换，等待实机复测；LibreVNA 官方硬件尚未上机实测。
 - 变更记录见 [CHANGELOG.md](CHANGELOG.md)，发布流程见 [docs/RELEASING.md](docs/RELEASING.md)。
 
 ## 功能
@@ -70,7 +70,7 @@
 | --- | --- |
 | ![Smith](docs/screenshots/smith.png) | ![设备](docs/screenshots/device.png) |
 
-**电子校准件实机（ECB-60，FW 0.3.2；FACTORY 系数，自动 SOL + THRU 完成）：**
+**电子校准件实机（ECB-60，FW 0.3.2；FACTORY 系数加载与校准流程；0.4.0 结果为 Smith 杂散，0.4.1 已修复测量时序、待复测）：**
 
 ![电子校准件](docs/screenshots/ecal.png)
 
@@ -95,13 +95,13 @@
 已构建的 debug APK（仓库内）：
 
 ```
-dist/LibreVNA-Mobile-0.4.0-debug.apk
-大小: 16,845,011 字节
-SHA-256: 4272B311C04CA948793525C606C6AD3896E060E802E81902A0FE70F7828A1705
+dist/LibreVNA-Mobile-0.4.1-debug.apk
+大小: 16,936,059 字节
+SHA-256: FC6E9A6A1B7A61073A02D64BF3977DA1428BC1DDF700AB8EDB254EDFB4DC1EFF
 ```
 
 ```bash
-adb install -r dist/LibreVNA-Mobile-0.4.0-debug.apk
+adb install -r dist/LibreVNA-Mobile-0.4.1-debug.apk
 ```
 
 也可以从仓库的 **Releases** 页面下载同一版本。debug APK 使用 Android 默认 debug 签名，适合测试；正式分发请按 [docs/RELEASING.md](docs/RELEASING.md) 使用自己的 release keystore。
@@ -115,7 +115,7 @@ INSTALL_FAILED_USER_RESTRICTED: Install canceled by user
 请使用 shell 安装方式（本机验证可用）：
 
 ```bash
-adb push dist/LibreVNA-Mobile-0.4.0-debug.apk /data/local/tmp/librevna.apk
+adb push dist/LibreVNA-Mobile-0.4.1-debug.apk /data/local/tmp/librevna.apk
 adb shell pm install -r -t /data/local/tmp/librevna.apk
 ```
 
@@ -194,10 +194,10 @@ B60（VNB-60，FW 1.8.6，HW 0xD0）有一个已知的固件行为：连接后�
 1. 用带外部供电的 OTG Hub 同时连接 VNA 与校准件（ECB-60 有加热器，手机直供可能不够）。
 2. 「校准 → 电子校准件」→「检测并连接」，允许 USB 权限，确认 IDN / FW / 端口 / 温度。
 3. 选择系数集（通常 `FACTORY`）→「加载系数」，等待进度到 100%。
-4. 固定映射 VNA P1 ↔ Cal P1、P2 ↔ Cal P2；点「开始电子校准」。
-5. 应用会逐个切换 OPEN / SHORT / LOAD / THROUGH，采集 VNA 数据并应用 SOL + THRU；结束把所有 cal 端口设回 NONE。
+4. 固定手动映射 VNA P1 ↔ Cal P1、P2 ↔ Cal P2，**不使用 Auto**；点「开始电子校准」。
+5. 应用会先把**所有用到的 E-Cal 端口设成同一个标准**（Open/Short/Load），再测所有 VNA 端口；THRU 前先全部设回 NONE，再建立 P1→P2 直通；结束把所有 cal 端口设回 NONE。
 
-注意：温度未稳定时会等待最多 90 秒；B60 每次切换标准会执行 SA→VNA 复位，整体耗时比桌面版长。
+注意：温度未稳定时会等待最多 90 秒；B60 每次切换标准会执行 SA→VNA 复位，整体耗时比桌面版长。端口状态每次都会用 `:PORT?` 校验，系数流必须完整；否则会中止或回退逐点读取，避免截断系数造成“杂散”校准。
 
 ### 手动 1 端口 SOL
 
@@ -389,7 +389,7 @@ Harogic B60 真机验证（FW 1.8.6 / HW 0xD0，Android 17 平板，无线 adb�
 - `.cal` 解析与 1 端口 SOL + THRU 重建已由 JVM 单元测试覆盖；并用 VNStudio 导出的真实 `.cal` 验证通过：
   - `ec_2p_solt_10m6g_5dbm_1khz_...cal`（ECB-60 电子校准件，Touchstone 系数）：2 端口 SOL + THRU，0 警告
   - `default_calbrate_<序列号>.cal`（MCB-60M 手动套件，纯参数化 calkit）：2 端口 SOL + THRU，0 警告
-- LibreCAL / ECB-60 已在 ECB-60（FW 0.3.2，序列号已隐去）实机验证：USB 权限、IDN、2 端口、温度/稳定、FACTORY 7 组系数加载、自动 2 端口 SOL + THRU 全部完成，CAL 生效；`.cal` 导入也已在平板上用 VNStudio 文件实测。
+- LibreCAL / ECB-60 的 USB 权限、IDN、2 端口、温度/稳定、FACTORY 7 组系数加载和自动流程已在 ECB-60（FW 0.3.2，序列号已隐去）上跑通；但 0.4.0 及之前的校准结果在 Smith 图上表现为杂散。0.4.1 已按 LibreVNA-GUI 的 **all-port 标准切换** 修正测量时序，并增加 `:PORT?` 状态校验和系数流完整性校验，待实机复测确认。`.cal` 导入也已在平板上用 VNStudio 文件实测。
 
 LibreVNA 官方硬件尚未上机实测；USB 协议路径已由 B60 验证。
 

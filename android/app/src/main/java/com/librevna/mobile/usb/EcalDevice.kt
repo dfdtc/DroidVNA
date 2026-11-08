@@ -88,6 +88,20 @@ class EcalDevice private constructor(
         return command(cmd)
     }
 
+    /** Set a standard and confirm that the firmware reports the expected port state. */
+    fun setStandardChecked(port: Int, standard: EcalStandard, throughPort: Int = 0): Boolean {
+        if (!setStandard(port, standard, throughPort)) return false
+        val expected = when (standard) {
+            EcalStandard.OPEN -> "OPEN"
+            EcalStandard.SHORT -> "SHORT"
+            EcalStandard.LOAD -> "LOAD"
+            EcalStandard.THROUGH -> "THROUGH $throughPort"
+            EcalStandard.NONE -> "NONE"
+        }
+        val actual = query(":PORT? $port", 1200).trim().uppercase()
+        return actual == expected
+    }
+
     fun setAllNone(ports: Int) {
         for (p in 1..ports) {
             runCatching { command(":PORT $p NONE", 700) }
@@ -124,7 +138,10 @@ class EcalDevice private constructor(
         val count = query(":COEFF:NUM? $setName $param").toIntOrNull() ?: 0
         if (count <= 0) throw IOException("系数 $param 不存在或点数为 0")
         val streamed = tryReadStream(setName, param, count)
-        if (streamed != null && streamed.size >= 2) {
+        // A truncated stream would silently produce a coefficient table with only a few
+        // points and garbage interpolation. Only accept a complete stream; otherwise use
+        // the point-by-point fallback.
+        if (streamed != null && streamed.size == count) {
             return EcalCoefficients.standard(param, kind, streamed)
         }
         // Older firmware or a failed stream: read point by point.
@@ -270,7 +287,12 @@ class EcalDevice private constructor(
             val connection = manager.openDevice(device)
                 ?: throw IOException("无法打开电子校准件（权限或占用问题）")
             val candidates = (0 until device.interfaceCount).map { device.getInterface(it) }
+            // LibreCAL/ECB-60 exposes SCPI on interface 2. Prefer that exact interface
+            // instead of blindly taking the first vendor-specific one (the composite
+            // device may expose more than one).
             val iface = candidates.firstOrNull {
+                it.id == 2 && it.interfaceClass == UsbConstants.USB_CLASS_VENDOR_SPEC
+            } ?: candidates.firstOrNull {
                 it.interfaceClass == UsbConstants.USB_CLASS_VENDOR_SPEC
             } ?: candidates.getOrNull(2)
                 ?: run {

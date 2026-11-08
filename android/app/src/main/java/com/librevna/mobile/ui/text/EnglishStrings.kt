@@ -182,6 +182,8 @@ internal object EnglishStrings {
         "电子校准件 · LibreCAL / ECB-60" to "E-Cal · LibreCAL / ECB-60",
         "通过 USB SCPI 自动切换 Open / Short / Load / Through，测量后直接应用校准。VID:PID 1209:4122，使用 vendor interface 2；VNA 端口 1/2 固定对应校准件端口 1/2。" to
             "Automatically switches Open / Short / Load / Through over USB SCPI and applies the calibration. VID:PID 1209:4122, vendor interface 2; VNA ports 1/2 map to E-Cal ports 1/2.",
+        "端口分配（手动固定，不使用 Auto）：VNA P1 → E-Cal P1 · VNA P2 → E-Cal P2。" to
+            "Port mapping (manual, no Auto): VNA P1 → E-Cal P1 · VNA P2 → E-Cal P2.",
         "检测并连接电子校准件" to "Detect and connect E-Cal",
         "电子校准件" to "E-Cal",
         "系数集" to "Coefficient sets",

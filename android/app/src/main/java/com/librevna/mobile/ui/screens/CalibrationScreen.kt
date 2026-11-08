@@ -167,10 +167,17 @@ fun CalibrationScreen(vm: MainViewModel) {
         item {
             SectionCard(title = "电子校准件 · LibreCAL / ECB-60") {
                 Text(
-                    "通过 USB SCPI 自动切换 Open / Short / Load / Through，测量后直接应用校准。VID:PID 1209:4122，使用 vendor interface 2；VNA 端口 1/2 固定对应校准件端口 1/2。",
+                    "通过 USB SCPI 自动切换 Open / Short / Load / Through，测量后直接应用校准。VID:PID 1209:4122，使用 vendor interface 2。",
                     color = VnaTextMuted,
                     fontSize = 11.5.sp,
                     lineHeight = 17.sp,
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "端口分配（手动固定，不使用 Auto）：VNA P1 → E-Cal P1 · VNA P2 → E-Cal P2。",
+                    color = VnaSecondary,
+                    fontSize = 11.sp,
+                    lineHeight = 16.sp,
                 )
                 Spacer(Modifier.height(10.dp))
                 if (!ecalConnected) {

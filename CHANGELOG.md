@@ -3,6 +3,27 @@
 本项目从 0.3.0 起公开维护。版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)，
 变更记录格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.4.1] - 2026-11-08
+
+### 修复
+
+- **E-Cal 2 端口校准**：按 LibreVNA-GUI 的流程，先把**所有用到的 E-Cal 端口设成同一个标准**
+  （Open / Short / Load）再测所有 VNA 端口；此前逐端口切换会让另一个端口停留在 NONE 或上一个
+  标准，导致测到的 Open/Short/Load 与系数定义不一致，SOL 误差项呈噪声状，Smith 图尤其明显。
+- **THRU 前先释放所有 E-Cal 端口**，再建立 `:PORT 1 THROUGH 2`，避免残留 LOAD/OPEN 状态。
+- 每次 `:PORT` 切换后用 `:PORT?` 校验实际状态，并给继电器 150 ms 稳定时间；失败会明确中止，
+  不再静默继续。
+- **系数流完整性校验**：`:COEFF:GET?` 流式读取必须拿到与 `:COEFF:NUM?` 完全一致的点数；
+  以前截断的流会被当成有效数据，少量点插值到整个频段会直接造成杂散/噪声系数。
+- 2 端口 E-Cal 校准开始前强制使用双端口扫描配置，避免 Port 1 的标准件在 1 端口模式下采集、
+  其余标准件在 2 端口模式下采集的不一致。
+- 明确固定手动端口映射：**VNA P1 → E-Cal P1，VNA P2 → E-Cal P2**，不使用 Auto；界面和日志中显示。
+
+### 说明
+
+- 这个修复针对 E-Cal 测量时序/端口状态，不改动 SOL 数学；`.cal` 导入和 1 端口 SOL 仍使用同一套误差模型。
+- 需要在实际 VNB-60 + ECB-60 上复测；如果仍有杂散，请把设备页日志（包含 `E-Cal coefficients:` 一行）发出来。
+
 ## [0.4.0] - 2026-11-08
 
 ### 新增

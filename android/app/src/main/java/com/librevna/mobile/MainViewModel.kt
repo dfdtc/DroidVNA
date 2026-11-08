@@ -400,7 +400,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val loaded = withContext(Dispatchers.IO) {
                     dev.readCoefficientSet(set, ports) { progress -> ecalProgress.value = progress }
                 }
+                val invalid = loaded.filter { (key, std) ->
+                    std.freqHz.size < 2 || std.s11.count { it.isFinite() } < 2 ||
+                        (key.endsWith("THROUGH") && (std.s21.count { it.isFinite() } < 2 || std.s12.count { it.isFinite() } < 2))
+                }
+                if (invalid.isNotEmpty()) {
+                    throw IllegalStateException("系数数据无效：" + invalid.keys.joinToString(","))
+                }
                 ecalStandards = loaded
+                repo.addLog("E-Cal coefficients: " + loaded.entries.joinToString(", ") { it.key + "=" + it.value.freqHz.size })
                 ecalCoefficientsLoaded.value = true
                 ecalProgress.value = 1.0
                 ecalMessage.value = "已加载 " + loaded.size + " 组系数（" + set + "）"
@@ -487,19 +495,41 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             ecalMessage.value = "温度未完全稳定，继续校准"
                         }
                     }
-                    for (p in 1..calPorts) {
-                        val captures = LinkedHashMap<CalStandard, com.librevna.mobile.model.SweepResult>()
-                        for (kind in listOf(CalStandard.OPEN, CalStandard.SHORT, CalStandard.LOAD)) {
-                            repo.stopScanning()
-                            if (!dev.setStandard(p, kind.toEcalStandard())) {
-                                throw IllegalStateException("切换到 $kind 失败")
+                    // Use one 2-port configuration for the whole E-Cal run. Otherwise the
+                    // first Port 1 standard is captured with the VNA in 1-port mode and the
+                    // remaining standards in 2-port mode, which makes the error terms
+                    // inconsistent.
+                    if (calPorts >= 2 && !repo.config.value.twoPort) {
+                        repo.setConfig(repo.config.value.copy(twoPort = true, continuous = true))
+                        delay(300)
+                    }
+
+                    // Like LibreVNA-GUI: set every used E-Cal port to the same standard
+                    // before measuring any VNA port. Leaving the other port in NONE (or on
+                    // the previous standard) changes the measured Open/Short/Load and
+                    // produces noisy SOL coefficients on a 2-port E-Cal.
+                    val capturesByPort = (1..calPorts).associateWith {
+                        LinkedHashMap<CalStandard, com.librevna.mobile.model.SweepResult>()
+                    }
+                    for (kind in listOf(CalStandard.OPEN, CalStandard.SHORT, CalStandard.LOAD)) {
+                        repo.stopScanning()
+                        for (p in 1..calPorts) {
+                            if (!dev.setStandardChecked(p, kind.toEcalStandard())) {
+                                throw IllegalStateException("切换到 " + kind.label + " 失败（E-Cal 端口 " + p + "）")
                             }
-                            delay(50)
+                        }
+                        // Give the mechanical relays time to settle after the last switch.
+                        delay(150)
+                        for (p in 1..calPorts) {
                             val sweep = repo.captureStandard(p, kind)
                                 ?: throw IllegalStateException("端口 " + p + " " + kind.label + " 没有扫描数据")
-                            captures[kind] = sweep
+                            capturesByPort.getValue(p)[kind] = sweep
                             step()
                         }
+                    }
+
+                    for (p in 1..calPorts) {
+                        val captures = capturesByPort.getValue(p)
                         val open = captures[CalStandard.OPEN]!!
                         val short = captures[CalStandard.SHORT]!!
                         val load = captures[CalStandard.LOAD]!!
@@ -541,10 +571,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                     if (calPorts >= 2) {
                         repo.stopScanning()
-                        if (!dev.setStandard(1, EcalStandard.THROUGH, 2)) {
+                        // The reference workflow opens all E-Cal ports before creating the
+                        // through path; do the same so no stale LOAD/OPEN remains.
+                        dev.setAllNone(calPorts)
+                        delay(100)
+                        if (!dev.setStandardChecked(1, EcalStandard.THROUGH, 2)) {
                             throw IllegalStateException("切换到 THROUGH 失败")
                         }
-                        delay(50)
+                        delay(150)
                         val thru = repo.captureThru()
                             ?: throw IllegalStateException("THRU 没有扫描数据")
                         val std = ecalStandards["P12_THROUGH"]
