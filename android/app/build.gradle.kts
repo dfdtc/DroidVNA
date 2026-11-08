@@ -15,7 +15,7 @@ val keystoreProperties = Properties().apply {
 }
 
 android {
-    namespace = "com.librevna.mobile"
+    namespace = "com.droidvna.app"
     compileSdk = 35
 
     signingConfigs {
@@ -30,7 +30,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.librevna.mobile"
+        applicationId = "com.droidvna.app"
         minSdk = 26
         targetSdk = 35
         versionCode = 6

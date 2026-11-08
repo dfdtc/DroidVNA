@@ -1,5 +1,5 @@
-LibreVNA Mobile
-Copyright (C) 2026 The LibreVNA Mobile Authors
+DroidVNA
+Copyright (C) 2026 The DroidVNA Authors
 
 This program is free software: you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -22,11 +22,18 @@ LibreVNA / LibreVNA-GUI
   https://github.com/jankae/LibreVNA
   Licensed under the GNU General Public License, version 3.
 
-The LibreVNA USB protocol, the SweepSettings / DeviceInfo layouts, the
-calibration formulas and the .cal file format used by this project are based
-on the LibreVNA open-source project.  This Android application is an
-independent implementation and is not affiliated with, endorsed by, or
-sponsored by the LibreVNA project or Harogic.
+DroidVNA is a derived work based on the LibreVNA-GUI open-source project.
+The USB protocol implementation (frames, CRC, SweepSettings, DeviceInfo,
+datapoint decoding), the 1-port SOL calibration math, the parametric
+Open/Short/Load/Through standard models, the .cal (format 3) file handling
+and the electronic-calibration (LibreCAL / ECB-60) SCPI workflow were
+translated or adapted from LibreVNA-GUI sources. Because of this, DroidVNA
+must be and is distributed under GPL-3.0 as well.
+
+DroidVNA is not the official Android application of LibreVNA. "LibreVNA" is
+the name of a hardware product; it is used here only to describe compatibility
+and provenance. This project is not affiliated with, endorsed by, or
+sponsored by the LibreVNA project, Jan Käberich, or Harogic.
 
 AndroidX, Jetpack Compose, Kotlin and Kotlin Coroutines are licensed under
 the Apache License, Version 2.0.

@@ -1,5 +1,5 @@
 <resources>
-    <style name="Theme.LibreVNA" parent="android:style/Theme.Material.NoActionBar">
+    <style name="Theme.DroidVNA" parent="android:style/Theme.Material.NoActionBar">
         <item name="android:windowBackground">#0B1116</item>
         <item name="android:statusBarColor">#0B1116</item>
         <item name="android:navigationBarColor">#0B1116</item>

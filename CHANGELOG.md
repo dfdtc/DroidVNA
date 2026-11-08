@@ -5,6 +5,14 @@
 
 ## [0.4.1] - 2026-11-08
 
+### 变更
+
+- **应用更名为 DroidVNA**：应用名、包名（`com.droidvna.app`）、Gradle `rootProject.name`、导出目录
+  （`Download/DroidVNA`）、导出文件名前缀（`droidvna_`）和界面标题全部改名，避免与第三方产品名混淆。
+- **新增衍生作品声明**：README、NOTICE 和应用「关于」中明确说明本项目基于 LibreVNA-GUI 的协议、
+  校准数学和 E-Cal 逻辑改写，按 GPL-3.0 发布，与 LibreVNA / Harogic 无隶属关系。
+
+
 ### 修复
 
 - **E-Cal 2 端口校准**：按 LibreVNA-GUI 的流程，先把**所有用到的 E-Cal 端口设成同一个标准**

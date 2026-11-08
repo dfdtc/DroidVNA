@@ -50,15 +50,15 @@ Copy-Item keystore.properties.example keystore.properties
 ## 4. 复制并校验 APK
 
 ```powershell
-Copy-Item android\app\build\outputs\apk\debug\app-debug.apk dist\LibreVNA-Mobile-0.4.2-debug.apk
-Get-FileHash dist\LibreVNA-Mobile-0.4.2-debug.apk -Algorithm SHA256
-(Get-Item dist\LibreVNA-Mobile-0.4.2-debug.apk).Length
+Copy-Item android\app\build\outputs\apk\debug\app-debug.apk dist\DroidVNA-0.4.2-debug.apk
+Get-FileHash dist\DroidVNA-0.4.2-debug.apk -Algorithm SHA256
+(Get-Item dist\DroidVNA-0.4.2-debug.apk).Length
 ```
 
 把文件名、字节数和 SHA-256 写进 `README.md` 的「安装」一节。
 
-> `.gitignore` 目前只白名单了 `dist/LibreVNA-Mobile-0.4.1-debug.apk`。发布新版本时，
-> 要么把新文件名加到 `!` 规则后面，要么用 `git add -f dist/LibreVNA-Mobile-0.4.2-debug.apk`
+> `.gitignore` 目前只白名单了 `dist/DroidVNA-0.4.1-debug.apk`。发布新版本时，
+> 要么把新文件名加到 `!` 规则后面，要么用 `git add -f dist/DroidVNA-0.4.2-debug.apk`
 > 强制加入版本库。
 
 ## 5. 提交并打标签
@@ -66,7 +66,7 @@ Get-FileHash dist\LibreVNA-Mobile-0.4.2-debug.apk -Algorithm SHA256
 ```powershell
 git add -A
 git commit -m "发布 0.4.2"
-git tag -a v0.4.2 -m "LibreVNA Mobile 0.4.2"
+git tag -a v0.4.2 -m "DroidVNA 0.4.2"
 git push origin main
 git push origin v0.4.2
 ```
@@ -76,17 +76,17 @@ git push origin v0.4.2
 在 GitHub 仓库页面选择 **Releases → Draft a new release**：
 
 - Tag：`v0.4.2`
-- Title：`LibreVNA Mobile 0.4.2`
+- Title：`DroidVNA 0.4.2`
 - 说明：从 `CHANGELOG.md` 复制对应版本的内容，补充升级注意事项
-- 附件：上传 `dist/LibreVNA-Mobile-0.4.2-debug.apk`（或签名的 release APK）
+- 附件：上传 `dist/DroidVNA-0.4.2-debug.apk`（或签名的 release APK）
 
 按 `CHANGELOG.md` 新建 `docs/release-notes/0.4.2.md`（可复制 0.4.0 的格式）。
 
 也可以使用 GitHub CLI：
 
 ```bash
-gh release create v0.4.2 dist/LibreVNA-Mobile-0.4.2-debug.apk \
-  --title "LibreVNA Mobile 0.4.2" \
+gh release create v0.4.2 dist/DroidVNA-0.4.2-debug.apk \
+  --title "DroidVNA 0.4.2" \
   --notes-file docs/release-notes/0.4.2.md
 ```
 

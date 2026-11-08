@@ -13,5 +13,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "LibreVNA-Mobile"
+rootProject.name = "DroidVNA"
 include(":app")

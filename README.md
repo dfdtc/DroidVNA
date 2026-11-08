@@ -1,10 +1,10 @@
-# LibreVNA Mobile
+# DroidVNA
 
-**LibreVNA / Harogic B60 的原生 Android 触屏客户端** — 通过 USB-C OTG 直接把 VNA 接到平板/手机，不需要 PC、Termux 或共享内核容器。使用 Android USB Host API 直接访问设备的 vendor-specific bulk 端点，按 LibreVNA USB 协议 v14 完成扫描设置、数据接收、校准与导出；同时支持导入电脑版 `.cal`，以及 LibreCAL / Harogic ECB-60 电子校准件的自动 1 端口 SOL + THRU 校准。界面内置 **中文 / English** 两套文案，可在右上角设置中随时切换。
+**DroidVNA — LibreVNA / Harogic B60 的原生 Android 触屏客户端** — 通过 USB-C OTG 直接把 VNA 接到平板/手机，不需要 PC、Termux 或共享内核容器。使用 Android USB Host API 直接访问设备的 vendor-specific bulk 端点，按 LibreVNA USB 协议 v14 完成扫描设置、数据接收、校准与导出；同时支持导入电脑版 `.cal`，以及 LibreCAL / Harogic ECB-60 电子校准件的自动 1 端口 SOL + THRU 校准。界面内置 **中文 / English** 两套文案，可在右上角设置中随时切换。
 
-> **English** — A touch-first, native Android USB host client for LibreVNA and Harogic B60 vector network analyzers. It speaks the LibreVNA USB protocol v14 directly (no PC, no Termux), supports 1-port SOL + THRU calibration, LibreVNA-GUI `.cal` import, and LibreCAL / ECB-60 electronic calibration. Licensed under GPL-3.0.
+**English name:** DroidVNA — a touch-first, native Android USB host client for LibreVNA and Harogic B60 vector network analyzers. It speaks the LibreVNA USB protocol v14 directly (no PC, no Termux), supports 1-port SOL + THRU calibration, LibreVNA-GUI `.cal` import, and LibreCAL / ECB-60 electronic calibration. Licensed under GPL-3.0.
 
-> 本项目是独立实现，不是 LibreVNA 官方 Android 版，也不包含桌面 Qt GUI。硬件与协议来自 [LibreVNA](https://github.com/jankae/LibreVNA) 开源项目（GPLv3）。
+> **声明**：DroidVNA 不是 LibreVNA 官方 Android 版，也不包含桌面 Qt GUI。它是**基于 [LibreVNA-GUI](https://github.com/jankae/LibreVNA) 的 USB 协议、校准数学与 E-Cal 逻辑改写**的 Android 客户端，按 GPL-3.0 发布；应用名中的 “VNA” 指矢量网络分析仪，“Droid” 指 Android，与 LibreVNA 商标所有者无隶属关系。
 
 ![测量界面](docs/screenshots/measure.png)
 
@@ -31,7 +31,7 @@
 ## 项目状态
 
 - 当前版本 **0.4.1**（versionCode 6），要求 Android 8.0（API 26）及以上。
-- 仓库内提供预构建的 debug APK：[dist/LibreVNA-Mobile-0.4.1-debug.apk](dist/LibreVNA-Mobile-0.4.1-debug.apk)，也可以从 GitHub Releases 下载。
+- 仓库内提供预构建的 debug APK：[dist/DroidVNA-0.4.1-debug.apk](dist/DroidVNA-0.4.1-debug.apk)，也可以从 GitHub Releases 下载。
 - 已在 Xiaomi Pad（Android 17）+ Harogic B60（FW 1.8.6）上完成真机验证；ECB-60（FW 0.3.2）的 USB、系数读取和校准流程已实机跑通，但 0.4.0 及之前的校准结果存在 Smith 杂散，0.4.1 已改为 all-port 标准切换，等待实机复测；LibreVNA 官方硬件尚未上机实测。
 - 变更记录见 [CHANGELOG.md](CHANGELOG.md)，发布流程见 [docs/RELEASING.md](docs/RELEASING.md)。
 
@@ -54,7 +54,7 @@
 - **THRU 归一化**：对 S21 / S12 做直通响应校准。
 - **电脑 .cal 导入**：读取 LibreVNA-GUI format 3 的 .cal，从桌面版导出的校准文件在移动端重建 1 端口 SOL + THRU 并立即应用；按当前 VNA 序列号保存。
 - **电子校准件（LibreCAL / ECB-60）**：通过 USB SCPI 读取 FACTORY 系数，自动切换 Open/Short/Load/Through，测量后直接应用 1 端口 SOL + THRU；支持温度/稳定状态显示。
-- **导出**：Touchstone `.s2p` / `.s1p`、CSV，保存到 `Download/LibreVNA`，也可通过系统分享发送。
+- **导出**：Touchstone `.s2p` / `.s1p`、CSV，保存到 `Download/DroidVNA`，也可通过系统分享发送。
 - **演示模式**：内置 1.75–2.65 GHz 带通滤波器 DUT 和真实的系统误差模型，没有硬件也能完整走通 SOL 校准与导出。
 - **设备页**：硬件/固件/协议版本、锁定与温度状态、USB 诊断、设备日志。
 - **协议 v14**：支持 LibreVNA V1 / P2 / PT 与 Harogic B60（同一 USB 协议，具体以设备 DeviceInfo 为准）。
@@ -95,13 +95,13 @@
 已构建的 debug APK（仓库内）：
 
 ```
-dist/LibreVNA-Mobile-0.4.1-debug.apk
-大小: 16,936,059 字节
-SHA-256: FC6E9A6A1B7A61073A02D64BF3977DA1428BC1DDF700AB8EDB254EDFB4DC1EFF
+dist/DroidVNA-0.4.1-debug.apk
+大小: 16,845,003 字节
+SHA-256: 5F89EE98BEF0E40E13EFEB985C6D5A6CE8C3F17C19AB2B9EC4D18A5881C012E9
 ```
 
 ```bash
-adb install -r dist/LibreVNA-Mobile-0.4.1-debug.apk
+adb install -r dist/DroidVNA-0.4.1-debug.apk
 ```
 
 也可以从仓库的 **Releases** 页面下载同一版本。debug APK 使用 Android 默认 debug 签名，适合测试；正式分发请按 [docs/RELEASING.md](docs/RELEASING.md) 使用自己的 release keystore。
@@ -115,7 +115,7 @@ INSTALL_FAILED_USER_RESTRICTED: Install canceled by user
 请使用 shell 安装方式（本机验证可用）：
 
 ```bash
-adb push dist/LibreVNA-Mobile-0.4.1-debug.apk /data/local/tmp/librevna.apk
+adb push dist/DroidVNA-0.4.1-debug.apk /data/local/tmp/librevna.apk
 adb shell pm install -r -t /data/local/tmp/librevna.apk
 ```
 
@@ -222,10 +222,10 @@ B60（VNB-60，FW 1.8.6，HW 0xD0）有一个已知的固件行为：连接后�
 - Touchstone `.s2p`：`# Hz S RI R 50`，列为 S11 S21 S12 S22（每列 re/im）。
 - Touchstone `.s1p`：仅 S11。
 - CSV：频率 + 各参数的 dB / 相位。
-- 保存位置：`Download/LibreVNA`（Android 10+，MediaStore）；Android 8/9 保存到应用外部目录。
+- 保存位置：`Download/DroidVNA`（Android 10+，MediaStore）；Android 8/9 保存到应用外部目录。
 - 分享按钮：通过系统分享面板发送文件。
 
-文件名形如 `librevna_20261107_205533_cal.s2p`。`cal` 表示当前数据已应用校准，`raw` 表示未校准。
+文件名形如 `droidvna_20261107_205533_cal.s2p`。`cal` 表示当前数据已应用校准，`raw` 表示未校准。
 
 ## 构建
 
@@ -368,7 +368,7 @@ cd android
 - dB / 相位 / VSWR / Smith 切换与单指读数、双指缩放
 - Open/Short/Load 捕获 → SOL 计算 → 校准后 S11/S21 变化
 - THRU 捕获与归一化
-- `.s2p` 保存到 `Download/LibreVNA` 并校验 9 列数据
+- `.s2p` 保存到 `Download/DroidVNA` 并校验 9 列数据
 - 校准跨应用重启持久化
 - 中文 / English 切换即时生效，强制停止并重装后仍保持所选语言
 - 应用设置中的语言与关于面板、迹线设置中的对数频率轴开关均可正常打开
@@ -403,8 +403,29 @@ LibreVNA 官方硬件尚未上机实测；USB 协议路径已由 B60 验证。
 
 ## 许可与致谢
 
+### 本项目做了什么，借用了什么
+
+DroidVNA 的 **UI、图表、触摸交互、USB 权限流程、导出和演示模式** 是为 Android 新写的 Kotlin/Compose 代码，**没有编译或链接 LibreVNA 的 C++/Qt 代码**。但下面这些部分**不是独立设计的**，而是依据 LibreVNA-GUI 的源码改写/翻译：
+
+| 模块 | 对应上游 |
+| --- | --- |
+| `usb/Protocol.kt` 帧、CRC、SweepSettings、DeviceInfo、Datapoint | LibreVNA 固件/USB 协议 v14、LibreVNA-GUI 驱动 |
+| `model/Calibration.kt` SOL 误差模型与求解 | LibreVNA-GUI 校准数学 |
+| `model/CalStandardModel.kt` Open/Short/Load/Through 参数模型 | `Calibration/calstandard.cpp`、`Util::addTransmissionLine` |
+| `model/CalibrationFileImporter.kt` `.cal` format 3 | LibreVNA-GUI 校准文件格式 |
+| `usb/EcalDevice.kt`、`model/EcalCoefficients.kt` E-Cal SCPI 与流程 | `Calibration/LibreCAL/caldevice.cpp`、`librecaldialog.cpp` |
+
+因此 **本项目按 GPL-3.0 对 LibreVNA-GUI 的衍生作品对待**，而不是可以改为 MIT/Apache 的独立实现。
+
+### 许可与致谢
+
 - 本项目以 **GNU General Public License v3.0** 发布，完整文本见 [LICENSE](LICENSE)，版权与第三方声明见 [NOTICE](NOTICE)。
-- Copyright (C) 2026 The LibreVNA Mobile Authors。
-- LibreVNA 硬件、固件、USB 协议与桌面 GUI 由 Jan Käberich 及贡献者开发，项目地址：<https://github.com/jankae/LibreVNA>，同样以 GPL-3.0 发布。本项目的协议实现、校准公式和 `.cal` 格式参考了该项目。
+- Copyright (C) 2026 The DroidVNA Authors。
+- LibreVNA 硬件、固件、USB 协议与桌面 GUI 由 Jan Käberich 及贡献者开发，项目地址：<https://github.com/jankae/LibreVNA>，同样以 GPL-3.0 发布。
 - AndroidX、Jetpack Compose、Kotlin 和 Kotlin Coroutines 使用 Apache License 2.0。
-- 本项目与 LibreVNA 官方、Harogic 均无隶属关系；LibreVNA 是硬件产品的名称，Android 应用为社区独立实现。
+
+### 名称与商标
+
+- 应用名为 **DroidVNA**：“Droid” 指 Android，“VNA” 指矢量网络分析仪（通用术语）。
+- 原名 “LibreVNA Mobile” 含有第三方产品名 **LibreVNA**，容易被认为是官方产品，已改名。
+- 本项目与 LibreVNA 项目、Jan Käberich 以及 Harogic 均**无隶属、赞助或背书关系**；README、应用内“关于”和驱动日志中提及 LibreVNA，仅用于说明兼容性与出处。
