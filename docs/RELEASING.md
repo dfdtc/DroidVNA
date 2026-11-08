@@ -8,8 +8,8 @@ Linux/macOS 下把 `\` 换成 `/`、`.\gradlew.bat` 换成 `./gradlew` 即可。
 修改 `android/app/build.gradle.kts`：
 
 ```kotlin
-versionCode = 5          // 每次发布 +1，不能回退
-versionName = "0.3.1"    // 展示给用户的版本
+versionCode = 6          // 每次发布 +1，不能回退
+versionName = "0.4.1"    // 展示给用户的版本
 ```
 
 同时更新：
@@ -50,44 +50,44 @@ Copy-Item keystore.properties.example keystore.properties
 ## 4. 复制并校验 APK
 
 ```powershell
-Copy-Item android\app\build\outputs\apk\debug\app-debug.apk dist\LibreVNA-Mobile-0.3.1-debug.apk
-Get-FileHash dist\LibreVNA-Mobile-0.3.1-debug.apk -Algorithm SHA256
-(Get-Item dist\LibreVNA-Mobile-0.3.1-debug.apk).Length
+Copy-Item android\app\build\outputs\apk\debug\app-debug.apk dist\LibreVNA-Mobile-0.4.1-debug.apk
+Get-FileHash dist\LibreVNA-Mobile-0.4.1-debug.apk -Algorithm SHA256
+(Get-Item dist\LibreVNA-Mobile-0.4.1-debug.apk).Length
 ```
 
 把文件名、字节数和 SHA-256 写进 `README.md` 的「安装」一节。
 
-> `.gitignore` 目前只白名单了 `dist/LibreVNA-Mobile-0.3.0-debug.apk`。发布新版本时，
-> 要么把新文件名加到 `!` 规则后面，要么用 `git add -f dist/LibreVNA-Mobile-0.3.1-debug.apk`
+> `.gitignore` 目前只白名单了 `dist/LibreVNA-Mobile-0.4.0-debug.apk`。发布新版本时，
+> 要么把新文件名加到 `!` 规则后面，要么用 `git add -f dist/LibreVNA-Mobile-0.4.1-debug.apk`
 > 强制加入版本库。
 
 ## 5. 提交并打标签
 
 ```powershell
 git add -A
-git commit -m "发布 0.3.1"
-git tag -a v0.3.1 -m "LibreVNA Mobile 0.3.1"
+git commit -m "发布 0.4.1"
+git tag -a v0.4.1 -m "LibreVNA Mobile 0.4.1"
 git push origin main
-git push origin v0.3.1
+git push origin v0.4.1
 ```
 
 ## 6. 创建 GitHub Release
 
 在 GitHub 仓库页面选择 **Releases → Draft a new release**：
 
-- Tag：`v0.3.1`
-- Title：`LibreVNA Mobile 0.3.1`
+- Tag：`v0.4.1`
+- Title：`LibreVNA Mobile 0.4.1`
 - 说明：从 `CHANGELOG.md` 复制对应版本的内容，补充升级注意事项
-- 附件：上传 `dist/LibreVNA-Mobile-0.3.1-debug.apk`（或签名的 release APK）
+- 附件：上传 `dist/LibreVNA-Mobile-0.4.1-debug.apk`（或签名的 release APK）
 
-按 `CHANGELOG.md` 新建 `docs/release-notes/0.3.1.md`（可复制 0.3.0 的格式）。
+按 `CHANGELOG.md` 新建 `docs/release-notes/0.4.1.md`（可复制 0.4.0 的格式）。
 
 也可以使用 GitHub CLI：
 
 ```bash
-gh release create v0.3.1 dist/LibreVNA-Mobile-0.3.1-debug.apk \
-  --title "LibreVNA Mobile 0.3.1" \
-  --notes-file docs/release-notes/0.3.1.md
+gh release create v0.4.1 dist/LibreVNA-Mobile-0.4.1-debug.apk \
+  --title "LibreVNA Mobile 0.4.1" \
+  --notes-file docs/release-notes/0.4.1.md
 ```
 
 ## 7. 发布后检查

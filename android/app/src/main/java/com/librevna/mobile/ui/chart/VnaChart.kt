@@ -26,7 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CenterFocusStrong
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import com.librevna.mobile.ui.text.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -66,6 +66,7 @@ import com.librevna.mobile.model.SweepResult
 import com.librevna.mobile.model.formatFrequency
 import com.librevna.mobile.model.formatFrequencyShort
 import com.librevna.mobile.ui.components.SweepPulse
+import com.librevna.mobile.ui.text.tr
 import com.librevna.mobile.ui.theme.VnaOutline
 import com.librevna.mobile.ui.theme.VnaPrimary
 import com.librevna.mobile.ui.theme.VnaSecondary
@@ -103,6 +104,7 @@ private data class ChartGeometry(
     val viewStop: Double,
     val yMin: Double,
     val yMax: Double,
+    val logX: Boolean = false,
 )
 
 private data class SmithGeometry(val cx: Float, val cy: Float, val radius: Float)
@@ -121,11 +123,13 @@ fun VnaChart(
     calibrated: Boolean,
     sweepActive: Boolean = false,
     singleSweep: Boolean = false,
+    autoY: Boolean = true,
+    onAutoYChange: (Boolean) -> Unit = {},
+    logFrequencyAxis: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     var viewStart by remember(config.startHz, config.stopHz) { mutableDoubleStateOf(config.startHz.toDouble()) }
     var viewStop by remember(config.startHz, config.stopHz) { mutableDoubleStateOf(config.stopHz.toDouble()) }
-    var autoY by remember { mutableStateOf(true) }
     var manualYMin by remember { mutableDoubleStateOf(-80.0) }
     var manualYMax by remember { mutableDoubleStateOf(0.0) }
     var crosshairFreq by remember { mutableStateOf<Double?>(null) }
@@ -135,14 +139,20 @@ fun VnaChart(
     LaunchedEffect(config.startHz, config.stopHz) {
         viewStart = config.startHz.toDouble()
         viewStop = config.stopHz.toDouble()
-        autoY = true
+        onAutoYChange(true)
         crosshairFreq = null
     }
     LaunchedEffect(mode) {
-        autoY = true
+        onAutoYChange(true)
     }
 
     val computedY = if (mode == ChartMode.SMITH) (1.0 to -1.0) else computeYRange(result, enabled, mode, viewStart, viewStop)
+    LaunchedEffect(autoY, computedY) {
+        if (autoY) {
+            manualYMin = computedY.first
+            manualYMax = computedY.second
+        }
+    }
     val yMin = if (autoY) computedY.first else manualYMin
     val yMax = if (autoY) computedY.second else manualYMax
 
@@ -154,14 +164,16 @@ fun VnaChart(
     val currentViewStart = rememberUpdatedState(viewStart)
     val currentViewStop = rememberUpdatedState(viewStop)
     val currentAutoY = rememberUpdatedState(autoY)
+    val currentLogX = rememberUpdatedState(logFrequencyAxis)
     val currentYMin = rememberUpdatedState(yMin)
     val currentYMax = rememberUpdatedState(yMax)
     val currentOnMoveMarker = rememberUpdatedState(onMoveMarker)
+    val currentOnAutoYChange = rememberUpdatedState(onAutoYChange)
 
     fun resetView() {
         viewStart = config.startHz.toDouble()
         viewStop = config.stopHz.toDouble()
-        autoY = true
+        onAutoYChange(true)
         crosshairFreq = null
     }
 
@@ -185,6 +197,7 @@ fun VnaChart(
                             viewStop = currentViewStop.value,
                             yMin = currentYMin.value,
                             yMax = currentYMax.value,
+                            logX = currentLogX.value,
                         )
 
                         fun markerScreenPos(marker: Marker): Offset {
@@ -251,12 +264,13 @@ fun VnaChart(
                                             yMinState = currentYMin,
                                             yMaxState = currentYMax,
                                             autoYState = currentAutoY,
+                                            logX = currentLogX.value,
                                         ) { s, e, lo, hi ->
                                             viewStart = s
                                             viewStop = e
                                             manualYMin = lo
                                             manualYMax = hi
-                                            autoY = false
+                                            currentOnAutoYChange.value(false)
                                         }
                                     }
                                     event.changes.forEach { it.consume() }
@@ -288,11 +302,11 @@ fun VnaChart(
             if (mode == ChartMode.SMITH) {
                 drawSmith(result, enabled, markers, plot, this)
             } else {
-                drawXy(result, enabled, markers, plot, mode, viewStart, viewStop, yMin, yMax, sweepRate, averagingProgress, calibrated, this)
+                drawXy(result, enabled, markers, plot, mode, viewStart, viewStop, yMin, yMax, sweepRate, averagingProgress, calibrated, logFrequencyAxis, this)
             }
             crosshairFreq?.let { f ->
                 if (mode == ChartMode.SMITH) drawSmithCrosshair(result, enabled, f, plot, this)
-                else drawXyCrosshair(result, enabled, f, plot, mode, viewStart, viewStop, yMin, yMax, this)
+                else drawXyCrosshair(result, enabled, f, plot, mode, viewStart, viewStop, yMin, yMax, logFrequencyAxis, this)
             }
         }
 
@@ -301,7 +315,7 @@ fun VnaChart(
             onClick = { resetView() },
             modifier = Modifier.align(Alignment.TopEnd).padding(6.dp).size(38.dp),
         ) {
-            Icon(Icons.Default.CenterFocusStrong, contentDescription = "缩放至全带宽", tint = VnaTextMuted)
+            Icon(Icons.Default.CenterFocusStrong, contentDescription = tr("缩放至全带宽"), tint = VnaTextMuted)
         }
 
         if (result != null) {
@@ -399,16 +413,30 @@ private fun smithGeometry(width: Float, height: Float, density: Density): SmithG
 }
 
 private fun freqToX(freq: Double, geometry: ChartGeometry): Float {
-    val span = geometry.viewStop - geometry.viewStart
-    if (span <= 0.0) return geometry.plot.center.x
-    val t = ((freq - geometry.viewStart) / span).toFloat()
-    return geometry.plot.left + t * geometry.plot.width
+    val start = geometry.viewStart
+    val stop = geometry.viewStop
+    if (stop <= start) return geometry.plot.center.x
+    val t = if (geometry.logX && start > 0.0 && stop > 0.0) {
+        val ls = kotlin.math.ln(start)
+        val le = kotlin.math.ln(stop)
+        if (le <= ls) 0.0 else ((kotlin.math.ln(freq.coerceAtLeast(1e-9)) - ls) / (le - ls)).toFloat().toDouble()
+    } else {
+        (freq - start) / (stop - start)
+    }
+    return geometry.plot.left + t.toFloat() * geometry.plot.width
 }
 
 private fun xToFreq(x: Float, geometry: ChartGeometry): Double {
     if (geometry.plot.width <= 0f) return geometry.viewStart
     val t = ((x - geometry.plot.left) / geometry.plot.width).coerceIn(0f, 1f)
-    return geometry.viewStart + t * (geometry.viewStop - geometry.viewStart)
+    val start = geometry.viewStart
+    val stop = geometry.viewStop
+    if (geometry.logX && start > 0.0 && stop > 0.0) {
+        val ls = kotlin.math.ln(start)
+        val le = kotlin.math.ln(stop)
+        return kotlin.math.exp(ls + t * (le - ls))
+    }
+    return start + t * (stop - start)
 }
 
 private fun valueToY(value: Double, geometry: ChartGeometry): Float {
@@ -434,35 +462,71 @@ private fun applyTransform(
     yMinState: androidx.compose.runtime.State<Double>,
     yMaxState: androidx.compose.runtime.State<Double>,
     autoYState: androidx.compose.runtime.State<Boolean>,
+    logX: Boolean,
     apply: (Double, Double, Double, Double) -> Unit,
 ) {
     val sx = viewStartState.value
     val ex = viewStopState.value
-    val span = ex - sx
-    if (span <= 0.0) return
-    val minSpan = max(1.0, (config.stopHz - config.startHz).toDouble() / max(1, config.points - 1) / 4.0)
-    val maxSpan = (config.stopHz - config.startHz).toDouble().coerceAtLeast(1.0)
-    val frac = ((centroid.x - plot.left) / plot.width).coerceIn(0f, 1f).toDouble()
-    val anchor = sx + frac * span
-    val newSpan = (span / zoom.toDouble().coerceAtLeast(0.01)).coerceIn(minSpan, maxSpan)
-    var ns = anchor - frac * newSpan
-    var ne = ns + newSpan
-    val panFreq = -(pan.x / plot.width).toDouble() * newSpan
-    ns += panFreq
-    ne += panFreq
+    if (ex <= sx) return
     val minF = config.startHz.toDouble()
     val maxF = config.stopHz.toDouble()
-    if (ns < minF) {
-        ne += minF - ns
-        ns = minF
+    val frac = ((centroid.x - plot.left) / plot.width).coerceIn(0f, 1f).toDouble()
+    var ns: Double
+    var ne: Double
+    val z = zoom.toDouble().coerceAtLeast(0.01)
+
+    if (logX && sx > 0.0 && ex > 0.0 && minF > 0.0) {
+        val ls = kotlin.math.ln(sx)
+        val le = kotlin.math.ln(ex)
+        val lspan = le - ls
+        val minRatio = (maxF / minF).pow(1.0 / max(1, config.points - 1) / 4.0)
+        val minLogSpan = kotlin.math.ln(max(1.0001, minRatio))
+        val maxLogSpan = kotlin.math.ln(maxF / minF).coerceAtLeast(minLogSpan)
+        val newLogSpan = (lspan / z).coerceIn(minLogSpan, maxLogSpan)
+        val anchor = kotlin.math.exp(ls + frac * lspan)
+        var nls = kotlin.math.ln(anchor) - frac * newLogSpan
+        var nle = nls + newLogSpan
+        val panLog = -(pan.x / plot.width).toDouble() * newLogSpan
+        nls += panLog
+        nle += panLog
+        val lmin = kotlin.math.ln(minF)
+        val lmax = kotlin.math.ln(maxF)
+        if (nls < lmin) {
+            nle += lmin - nls
+            nls = lmin
+        }
+        if (nle > lmax) {
+            nls -= nle - lmax
+            nle = lmax
+        }
+        if (nls < lmin) nls = lmin
+        if (nle > lmax) nle = lmax
+        if (nle - nls < minLogSpan) nle = nls + minLogSpan
+        ns = kotlin.math.exp(nls)
+        ne = kotlin.math.exp(nle)
+    } else {
+        val span = ex - sx
+        val minSpan = max(1.0, (maxF - minF) / max(1, config.points - 1) / 4.0)
+        val maxSpan = (maxF - minF).coerceAtLeast(1.0)
+        val anchor = sx + frac * span
+        val newSpan = (span / z).coerceIn(minSpan, maxSpan)
+        ns = anchor - frac * newSpan
+        ne = ns + newSpan
+        val panFreq = -(pan.x / plot.width).toDouble() * newSpan
+        ns += panFreq
+        ne += panFreq
+        if (ns < minF) {
+            ne += minF - ns
+            ns = minF
+        }
+        if (ne > maxF) {
+            ns -= ne - maxF
+            ne = maxF
+        }
+        if (ns < minF) ns = minF
+        if (ne > maxF) ne = maxF
+        if (ne - ns < minSpan) ne = ns + minSpan
     }
-    if (ne > maxF) {
-        ns -= ne - maxF
-        ne = maxF
-    }
-    if (ns < minF) ns = minF
-    if (ne > maxF) ne = maxF
-    if (ne - ns < minSpan) ne = ns + minSpan
 
     val sy = yMinState.value
     val ey = yMaxState.value
@@ -473,7 +537,7 @@ private fun applyTransform(
         if (yspan > 0.0) {
             val fy = ((plot.bottom - centroid.y) / plot.height).coerceIn(0f, 1f).toDouble()
             val yAnchor = sy + fy * yspan
-            val newY = (yspan / zoom.toDouble().coerceAtLeast(0.01)).coerceIn(1e-6, 1e9)
+            val newY = (yspan / z).coerceIn(1e-6, 1e9)
             nyMin = yAnchor - fy * newY
             nyMax = nyMin + newY
             val panY = (pan.y / plot.height).toDouble() * newY
@@ -482,6 +546,29 @@ private fun applyTransform(
         }
     }
     apply(ns, ne, nyMin, nyMax)
+}
+
+private fun logTicks(minValue: Double, maxValue: Double): List<Double> {
+    if (!minValue.isFinite() || !maxValue.isFinite() || minValue <= 0.0 || maxValue <= minValue) {
+        return listOf(minValue)
+    }
+    val firstDecade = floor(log10(minValue)).toInt()
+    val lastDecade = ceil(log10(maxValue)).toInt()
+    val sparse = lastDecade - firstDecade > 4
+    val multipliers = if (sparse) listOf(1.0) else listOf(1.0, 2.0, 5.0)
+    val ticks = ArrayList<Double>()
+    for (decade in firstDecade..lastDecade) {
+        for (multiplier in multipliers) {
+            val value = multiplier * 10.0.pow(decade)
+            if (value >= minValue * 0.999999 && value <= maxValue * 1.000001) {
+                ticks.add(value)
+            }
+        }
+    }
+    if (ticks.isEmpty()) return listOf(minValue, maxValue)
+    if (ticks.first() > minValue * 1.05) ticks.add(0, minValue)
+    if (ticks.last() < maxValue * 0.95) ticks.add(maxValue)
+    return ticks
 }
 
 private fun niceTicks(minValue: Double, maxValue: Double, count: Int): List<Double> {
@@ -599,14 +686,15 @@ private fun DrawScope.drawXy(
     sweepRate: Double,
     averagingProgress: Float,
     calibrated: Boolean,
+    logX: Boolean,
     density: Density,
 ) {
-    val geometry = ChartGeometry(plot, viewStart, viewStop, yMin, yMax)
+    val geometry = ChartGeometry(plot, viewStart, viewStop, yMin, yMax, logX)
     val grid = Color(0xFF24333D)
     val labelColor = VnaTextMuted
 
     drawRect(color = Color(0xFF0F171D), topLeft = plot.topLeft, size = plot.size)
-    val xTicks = niceTicks(viewStart, viewStop, 6)
+    val xTicks = if (logX) logTicks(viewStart, viewStop) else niceTicks(viewStart, viewStop, 6)
     for ((index, t) in xTicks.withIndex()) {
         val x = freqToX(t, geometry)
         drawLine(grid, Offset(x, plot.top), Offset(x, plot.bottom), strokeWidth = 1f)
@@ -718,10 +806,11 @@ private fun DrawScope.drawXyCrosshair(
     viewStop: Double,
     yMin: Double,
     yMax: Double,
+    logX: Boolean,
     density: Density,
 ) {
     if (result == null) return
-    val geometry = ChartGeometry(plot, viewStart, viewStop, yMin, yMax)
+    val geometry = ChartGeometry(plot, viewStart, viewStop, yMin, yMax, logX)
     val index = result.nearestIndex(frequency)
     val f = result.freqHz.getOrNull(index)?.toDouble() ?: frequency
     val x = freqToX(f, geometry)

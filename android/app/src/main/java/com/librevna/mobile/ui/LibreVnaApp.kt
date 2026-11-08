@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.SaveAlt
 import androidx.compose.material.icons.filled.Science
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -22,10 +23,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -43,8 +44,15 @@ import com.librevna.mobile.ui.components.ConnectionPill
 import com.librevna.mobile.ui.screens.CalibrationScreen
 import com.librevna.mobile.ui.screens.DeviceScreen
 import com.librevna.mobile.ui.screens.MeasureScreen
+import com.librevna.mobile.ui.sheets.AppSettingsSheet
 import com.librevna.mobile.ui.sheets.ExportSheet
 import com.librevna.mobile.ui.sheets.SweepSettingsSheet
+import com.librevna.mobile.ui.sheets.TraceSettingsSheet
+import com.librevna.mobile.ui.text.LocalAppLanguage
+import com.librevna.mobile.ui.text.Text
+import com.librevna.mobile.ui.text.resolved
+import com.librevna.mobile.ui.text.translate
+import com.librevna.mobile.ui.text.tr
 import com.librevna.mobile.ui.theme.VnaBackground
 import com.librevna.mobile.ui.theme.VnaText
 import com.librevna.mobile.ui.theme.VnaTextMuted
@@ -56,10 +64,13 @@ fun LibreVnaApp(vm: MainViewModel) {
     val connection by vm.repo.connection.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val compact = LocalConfiguration.current.screenWidthDp < 700
+    val language by vm.language.collectAsStateWithLifecycle()
+    val resolvedLanguage = language.resolved()
 
-    LaunchedEffect(Unit) {
+    CompositionLocalProvider(LocalAppLanguage provides resolvedLanguage) {
+    LaunchedEffect(resolvedLanguage) {
         vm.messages.collect { message ->
-            snackbarHostState.showSnackbar(message, withDismissAction = true)
+            snackbarHostState.showSnackbar(translate(message, resolvedLanguage), withDismissAction = true)
         }
     }
     BackHandler(enabled = screen != AppScreen.MEASURE) {
@@ -119,6 +130,9 @@ fun LibreVnaApp(vm: MainViewModel) {
                             Icon(Icons.Default.SaveAlt, contentDescription = "导出", tint = VnaTextMuted)
                         }
                     }
+                    IconButton(onClick = { vm.showAppSettings.value = true }) {
+                        Icon(Icons.Default.Settings, contentDescription = tr("设置"), tint = VnaTextMuted)
+                    }
                 },
             )
         },
@@ -137,4 +151,7 @@ fun LibreVnaApp(vm: MainViewModel) {
 
     SweepSettingsSheet(vm)
     ExportSheet(vm)
+    AppSettingsSheet(vm)
+    TraceSettingsSheet(vm)
+    }
 }

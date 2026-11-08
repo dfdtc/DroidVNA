@@ -47,7 +47,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import com.librevna.mobile.ui.text.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -86,6 +86,7 @@ import com.librevna.mobile.ui.components.SectionCard
 import com.librevna.mobile.ui.components.SectionLabel
 import com.librevna.mobile.ui.components.StatusDot
 import com.librevna.mobile.ui.components.SweepPulse
+import com.librevna.mobile.ui.text.tr
 import com.librevna.mobile.ui.theme.VnaError
 import com.librevna.mobile.ui.theme.VnaOutline
 import com.librevna.mobile.ui.theme.VnaPrimary
@@ -104,6 +105,8 @@ fun MeasureScreen(vm: MainViewModel, wide: Boolean) {
     val info by vm.repo.info.collectAsStateWithLifecycle()
     val enabled by vm.enabledParams.collectAsStateWithLifecycle()
     val mode by vm.chartMode.collectAsStateWithLifecycle()
+    val autoY by vm.chartAutoY.collectAsStateWithLifecycle()
+    val logFrequencyAxis by vm.logFrequencyAxis.collectAsStateWithLifecycle()
     val markers by vm.markers.collectAsStateWithLifecycle()
     val running by vm.repo.running.collectAsStateWithLifecycle()
     val singleSweep by vm.repo.singleSweep.collectAsStateWithLifecycle()
@@ -141,7 +144,7 @@ fun MeasureScreen(vm: MainViewModel, wide: Boolean) {
                 ) {
                     Column(Modifier.weight(1f).fillMaxHeight()) {
                         WarningStrip(status)
-                        TraceModeRow(vm, config, enabled, mode)
+                        TraceModeRow(vm, config, enabled, mode, autoY, { vm.chartAutoY.value = !autoY }, { vm.showTraceSettings.value = true })
                         Spacer(Modifier.height(8.dp))
                         VnaChart(
                             result = sweep,
@@ -156,6 +159,9 @@ fun MeasureScreen(vm: MainViewModel, wide: Boolean) {
                             calibrated = calibration.isEmpty.not(),
                             sweepActive = running || singleSweep,
                             singleSweep = singleSweep,
+                            autoY = autoY,
+                            onAutoYChange = { vm.chartAutoY.value = it },
+                            logFrequencyAxis = logFrequencyAxis,
                             modifier = Modifier.weight(1f).fillMaxWidth(),
                         )
                         if (markers.isNotEmpty()) {
@@ -184,7 +190,7 @@ fun MeasureScreen(vm: MainViewModel, wide: Boolean) {
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     WarningStrip(status)
-                    TraceModeRow(vm, config, enabled, mode)
+                    TraceModeRow(vm, config, enabled, mode, autoY, { vm.chartAutoY.value = !autoY }, { vm.showTraceSettings.value = true })
                     VnaChart(
                         result = sweep,
                         config = config,
@@ -198,6 +204,9 @@ fun MeasureScreen(vm: MainViewModel, wide: Boolean) {
                         calibrated = calibration.isEmpty.not(),
                         sweepActive = running || singleSweep,
                         singleSweep = singleSweep,
+                        autoY = autoY,
+                        onAutoYChange = { vm.chartAutoY.value = it },
+                        logFrequencyAxis = logFrequencyAxis,
                         modifier = Modifier.weight(1f).fillMaxWidth(),
                     )
                     if (markers.isNotEmpty()) MarkerBar(vm, sweep, markers, enabled, mode)
@@ -242,6 +251,9 @@ private fun TraceModeRow(
     config: SweepConfig,
     enabled: Set<SParam>,
     mode: ChartMode,
+    autoY: Boolean,
+    onToggleAutoY: () -> Unit,
+    onOpenTraceSettings: () -> Unit,
 ) {
     Column {
         Row(
@@ -265,6 +277,20 @@ private fun TraceModeRow(
             Spacer(Modifier.width(6.dp))
             for (m in ChartMode.entries) {
                 ChoiceChip(m.label, mode == m) { vm.chartMode.value = m }
+            }
+            if (mode != ChartMode.SMITH) {
+                Spacer(Modifier.width(6.dp))
+                Box(Modifier.width(1.dp).height(22.dp).background(VnaOutline))
+                Spacer(Modifier.width(6.dp))
+                ChoiceChip(if (autoY) "Y 自动" else "Y 手动", autoY) { onToggleAutoY() }
+            }
+            IconButton(onClick = onOpenTraceSettings, modifier = Modifier.size(36.dp)) {
+                Icon(
+                    Icons.Default.Settings,
+                    contentDescription = tr("迹线设置"),
+                    tint = VnaTextMuted,
+                    modifier = Modifier.size(18.dp),
+                )
             }
         }
     }
@@ -508,7 +534,20 @@ private fun MeasureSidebar(
         SectionCard(
             title = "迹线",
             trailing = {
-                Text(markerCount.toString() + " 个标记", color = VnaTextMuted, fontSize = 11.sp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(markerCount.toString() + " 个标记", color = VnaTextMuted, fontSize = 11.sp)
+                    IconButton(
+                        onClick = { vm.showTraceSettings.value = true },
+                        modifier = Modifier.size(30.dp),
+                    ) {
+                        Icon(
+                            Icons.Default.Settings,
+                            contentDescription = tr("迹线设置"),
+                            tint = VnaTextMuted,
+                            modifier = Modifier.size(17.dp),
+                        )
+                    }
+                }
             },
         ) {
             Row(

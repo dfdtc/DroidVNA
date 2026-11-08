@@ -7,6 +7,7 @@
 package com.librevna.mobile
 
 import android.app.Application
+import android.content.Context
 import android.hardware.usb.UsbDevice
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
@@ -31,6 +32,7 @@ import com.librevna.mobile.model.SweepConfig
 import com.librevna.mobile.model.SweepResult
 import com.librevna.mobile.model.Marker
 import com.librevna.mobile.ui.chart.ChartMode
+import com.librevna.mobile.ui.text.AppLanguage
 import com.librevna.mobile.usb.EcalDevice
 import com.librevna.mobile.usb.EcalSnapshot
 import com.librevna.mobile.usb.EcalStandard
@@ -71,9 +73,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val usb: UsbVnaManager = app.usbManager
 
     val screen = MutableStateFlow(AppScreen.MEASURE)
+    private val preferences = application.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+
     val showSweepSheet = MutableStateFlow(false)
     val showExportSheet = MutableStateFlow(false)
-    val showAbout = MutableStateFlow(false)
+    val showAppSettings = MutableStateFlow(false)
+    val showTraceSettings = MutableStateFlow(false)
+    val language = MutableStateFlow(AppLanguage.fromKey(preferences.getString("language", null)))
+    val logFrequencyAxis = MutableStateFlow(preferences.getBoolean("log_frequency_axis", false))
+    val chartAutoY = MutableStateFlow(true)
     val chartMode = MutableStateFlow(ChartMode.DB)
     val enabledParams = MutableStateFlow(setOf(SParam.S11, SParam.S21))
     val markers = MutableStateFlow<List<Marker>>(emptyList())
@@ -140,6 +148,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun navigate(target: AppScreen) {
         screen.value = target
         if (target == AppScreen.CALIBRATION) calMessage.value = null
+    }
+
+    fun setLanguage(value: AppLanguage) {
+        language.value = value
+        preferences.edit().putString("language", value.key).apply()
+    }
+
+    fun setLogFrequencyAxis(enabled: Boolean) {
+        logFrequencyAxis.value = enabled
+        preferences.edit().putBoolean("log_frequency_axis", enabled).apply()
     }
 
     fun connect(device: UsbDevice) {

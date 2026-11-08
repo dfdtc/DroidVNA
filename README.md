@@ -1,6 +1,6 @@
 # LibreVNA Mobile
 
-**LibreVNA / Harogic B60 的原生 Android 触屏客户端** — 通过 USB-C OTG 直接把 VNA 接到平板/手机，不需要 PC、Termux 或共享内核容器。使用 Android USB Host API 直接访问设备的 vendor-specific bulk 端点，按 LibreVNA USB 协议 v14 完成扫描设置、数据接收、校准与导出；同时支持导入电脑版 `.cal`，以及 LibreCAL / Harogic ECB-60 电子校准件的自动 1 端口 SOL + THRU 校准。
+**LibreVNA / Harogic B60 的原生 Android 触屏客户端** — 通过 USB-C OTG 直接把 VNA 接到平板/手机，不需要 PC、Termux 或共享内核容器。使用 Android USB Host API 直接访问设备的 vendor-specific bulk 端点，按 LibreVNA USB 协议 v14 完成扫描设置、数据接收、校准与导出；同时支持导入电脑版 `.cal`，以及 LibreCAL / Harogic ECB-60 电子校准件的自动 1 端口 SOL + THRU 校准。界面内置 **中文 / English** 两套文案，可在右上角设置中随时切换。
 
 > **English** — A touch-first, native Android USB host client for LibreVNA and Harogic B60 vector network analyzers. It speaks the LibreVNA USB protocol v14 directly (no PC, no Termux), supports 1-port SOL + THRU calibration, LibreVNA-GUI `.cal` import, and LibreCAL / ECB-60 electronic calibration. Licensed under GPL-3.0.
 
@@ -16,6 +16,7 @@
 - [安装](#安装)
 - [连接 USB VNA](#连接-usb-vna)
 - [触屏操作](#触屏操作)
+- [设置](#设置)
 - [校准](#校准)
 - [导出](#导出)
 - [构建](#构建)
@@ -29,8 +30,8 @@
 
 ## 项目状态
 
-- 当前版本 **0.3.0**（versionCode 4），要求 Android 8.0（API 26）及以上。
-- 仓库内提供预构建的 debug APK：[dist/LibreVNA-Mobile-0.3.0-debug.apk](dist/LibreVNA-Mobile-0.3.0-debug.apk)，也可以从 GitHub Releases 下载。
+- 当前版本 **0.4.0**（versionCode 5），要求 Android 8.0（API 26）及以上。
+- 仓库内提供预构建的 debug APK：[dist/LibreVNA-Mobile-0.4.0-debug.apk](dist/LibreVNA-Mobile-0.4.0-debug.apk)，也可以从 GitHub Releases 下载。
 - 已在 Xiaomi Pad（Android 17）+ Harogic B60（FW 1.8.6）+ ECB-60（FW 0.3.2）上完成真机验证；LibreVNA 官方硬件尚未上机实测。
 - 变更记录见 [CHANGELOG.md](CHANGELOG.md)，发布流程见 [docs/RELEASING.md](docs/RELEASING.md)。
 
@@ -39,11 +40,14 @@
 - **实时双端口扫描**：S11 / S21 / S12 / S22，连续扫描或单次扫描，可暂停/恢复。
 - **慢速扫描进度可见**：低 IFBW 下首帧较慢时，侧栏「采集」和图表上都有呼吸灯指示正在运行；扫描过程中已到达的点会实时画到图上，不必等整帧结束。
 - **环形滚动更新**：连续扫描时不再每帧清空重画。新一帧的点逐个覆盖上一帧，尚未到达的点保留上一帧的值，因此图表始终显示完整曲线，读图不会被打断。
+- **中英文界面**：右上角齿轮 →「应用设置」→「界面语言」，可选跟随系统 / 中文 / English，切换立即生效并持久化；关于信息也在同一面板。
+- **Y 轴自动 / 手动**：图表上方的 `Y auto` 按钮在自动缩放和手动缩放之间切换；手动缩放后点一下即可恢复自动。
 - **触摸优先的图表**：
   - 双指缩放 / 平移（横轴与纵轴）
   - 单指点击/拖动显示十字光标读数
   - 拖动标记线改频点，点 `FIT` 恢复全带宽
   - dB、相位、VSWR、Smith 圆图四种显示
+  - 迹线设置中可切换**对数频率轴**，X 轴按 1-2-5 对数刻度显示
 - **标记**：任意添加、拖动、删除；峰值/谷值搜索；双标记 Δ 差值。
 - **扫描设置**：起止频率、点数、IFBW、功率、平均次数、双端口/单端口、对数扫描、自动连续扫描。B60 的 IFBW 可选 **15 Hz – 75 kHz**。
 - **1 端口 SOL 校准**：Open / Short / Load，计算方向性、源匹配和反射跟踪误差，按频率保存并插值应用；可选手动延迟。校准按设备序列号隔离，不会把演示/其他设备的校准套到 B60 上。
@@ -78,18 +82,26 @@
 
 ![低 IFBW 扫描进度](docs/screenshots/low_ifbw.png)
 
+**English UI / 应用设置 / 迹线设置：**
+
+| English UI | 应用设置 |
+| --- | --- |
+| ![English UI](docs/screenshots/measure-en.png) | ![应用设置](docs/screenshots/settings.png) |
+
+![迹线设置](docs/screenshots/trace-settings.png)
+
 ## 安装
 
 已构建的 debug APK（仓库内）：
 
 ```
-dist/LibreVNA-Mobile-0.3.0-debug.apk
-大小: 16,947,748 字节
-SHA-256: 403AFC857E5156A87FE0DB7FCBC0B707CCBA157642289674E41460D6AC282357
+dist/LibreVNA-Mobile-0.4.0-debug.apk
+大小: 16,845,011 字节
+SHA-256: 4272B311C04CA948793525C606C6AD3896E060E802E81902A0FE70F7828A1705
 ```
 
 ```bash
-adb install -r dist/LibreVNA-Mobile-0.3.0-debug.apk
+adb install -r dist/LibreVNA-Mobile-0.4.0-debug.apk
 ```
 
 也可以从仓库的 **Releases** 页面下载同一版本。debug APK 使用 Android 默认 debug 签名，适合测试；正式分发请按 [docs/RELEASING.md](docs/RELEASING.md) 使用自己的 release keystore。
@@ -103,7 +115,7 @@ INSTALL_FAILED_USER_RESTRICTED: Install canceled by user
 请使用 shell 安装方式（本机验证可用）：
 
 ```bash
-adb push dist/LibreVNA-Mobile-0.3.0-debug.apk /data/local/tmp/librevna.apk
+adb push dist/LibreVNA-Mobile-0.4.0-debug.apk /data/local/tmp/librevna.apk
 adb shell pm install -r -t /data/local/tmp/librevna.apk
 ```
 
@@ -146,6 +158,25 @@ B60（VNB-60，FW 1.8.6，HW 0xD0）有一个已知的固件行为：连接后�
 - **双击**：也可重置视图。
 - **标记**：侧栏「＋ 标记」在带宽中心加标记；「峰值」「谷值」自动搜索；标记卡片上的 × 删除。
 - **暂停**：右上/侧栏的大按钮暂停或恢复连续扫描；「单次」触发一次 standby 扫描。
+- **Y 轴**：图表上方 `Y auto` / `Y manual` 按钮切换自动与手动缩放；手动捏合缩放后点一下即可恢复自动。
+- **迹线**：图表上方或「迹线」卡片右侧的齿轮打开迹线设置。
+
+## 设置
+
+### 应用设置
+
+点击右上角齿轮打开「应用设置」：
+
+- **界面语言**：跟随系统 / 中文 / English，切换后立即生效，并保存到应用私有 SharedPreferences。
+- **关于**：应用版本、Android USB Host 实现、协议版本、支持设备、GPL-3.0 与上游项目信息。
+
+### 迹线设置
+
+图表上方或「迹线」卡片右侧的齿轮打开。当前包含：
+
+- **对数频率轴**：X 轴按对数频率显示，使用 1-2-5 对数刻度；关闭后恢复线性轴。设置会持久化。
+
+后续的迹线显示选项会继续加在这个面板中。
 
 ## 校准
 
@@ -267,6 +298,9 @@ android/
       VnaRepository.kt           连接、扫描控制、平均、校准应用、持久化
     model/                       Complex、SweepConfig/Result、SOL/THRU 校准数学、.cal 导入、E-Cal 系数解析
     ui/                          Compose 页面、图表、底部面板、主题
+      text/                      中英文文案、翻译 Text 包装、语言状态
+      screens/                   测量 / 设备 / 校准页面
+      sheets/                    扫描、导出、应用设置、迹线设置
     export/                      Touchstone/CSV、MediaStore/分享
     data/CalibrationStore.kt     JSON 持久化
   app/src/test/                  JVM 单元测试（21 个）
@@ -300,6 +334,7 @@ dist/                            预构建 APK
 - 图表为自绘 Compose Canvas，极大点数（>1001）未做性能优化。
 - 仓库内预构建 APK 为 debug 签名；正式分发请配置自己的 release keystore。
 - 在手机上使用前建议先用演示模式确认布局与操作。
+- 英文翻译覆盖主要界面和常见消息；极少数底层设备/协议日志可能保留原文。
 
 ## 故障排查
 
@@ -335,6 +370,9 @@ cd android
 - THRU 捕获与归一化
 - `.s2p` 保存到 `Download/LibreVNA` 并校验 9 列数据
 - 校准跨应用重启持久化
+- 中文 / English 切换即时生效，强制停止并重装后仍保持所选语言
+- 应用设置中的语言与关于面板、迹线设置中的对数频率轴开关均可正常打开
+- 对数频率轴在 500 MHz – 3 GHz 下显示 500M / 1G / 2G / 3G 刻度；Y auto 与 Y manual 可来回切换
 
 Harogic B60 真机验证（FW 1.8.6 / HW 0xD0，Android 17 平板，无线 adb）：
 

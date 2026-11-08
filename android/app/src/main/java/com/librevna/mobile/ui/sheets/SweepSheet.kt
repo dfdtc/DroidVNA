@@ -29,7 +29,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
+import com.librevna.mobile.ui.text.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -249,7 +249,7 @@ private fun SweepSheetContent(
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("平均次数", color = VnaTextMuted, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                Text(if (averaging > 1) averaging.toString() + "×" else "关闭", color = if (averaging > 1) VnaSecondary else VnaTextMuted, fontSize = 13.sp)
+                Text(if (averaging > 1) averaging.toString() + "×" else "关", color = if (averaging > 1) VnaSecondary else VnaTextMuted, fontSize = 13.sp)
             }
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

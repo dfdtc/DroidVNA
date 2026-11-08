@@ -28,7 +28,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import androidx.compose.material3.Switch
+import com.librevna.mobile.ui.text.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -276,6 +277,25 @@ fun AccentButton(
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
         )
+    }
+}
+
+@Composable
+fun SettingToggleRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, color = VnaText, fontSize = 13.sp)
+            Text(subtitle, color = VnaTextMuted, fontSize = 10.5.sp)
+        }
+        Switch(checked = checked, onCheckedChange = onChange)
     }
 }
 

@@ -35,7 +35,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import com.librevna.mobile.ui.text.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -249,16 +249,6 @@ fun DeviceScreen(vm: MainViewModel) {
             }
         }
 
-        item {
-            SectionCard(title = "关于") {
-                Text(
-                    "LibreVNA Mobile 0.3.0 · 原生 Android USB Host 实现\n协议 v14 · 支持 LibreVNA V1 / P2 / PT、Harogic B60 与 LibreCAL/ECB-60\n非官方应用，LibreVNA 硬件与协议由 Jan Käberich 及贡献者开发。",
-                    color = VnaTextMuted,
-                    fontSize = 10.5.sp,
-                    lineHeight = 16.sp,
-                )
-            }
-        }
     }
 }
 
