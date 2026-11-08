@@ -410,6 +410,22 @@ internal object EnglishStrings {
         "缺少系数 " to "Missing coefficient ",
         "测量 S11 / S21 / S12 / S22；关闭后仅激励端口 1" to
             "Measures S11 / S21 / S12 / S22; when off only port 1 is driven",
+
+        // Measure header / overflow menu / watermark
+        "菜单" to "Menu",
+        "设备" to "Device",
+        "收起迹线控件" to "Hide trace controls",
+        "展开迹线控件" to "Show trace controls",
+        "收起迹线与图表控件" to "Hide trace and chart controls",
+        "展开迹线与图表控件" to "Show trace and chart controls",
+        "收起采集控件" to "Hide acquisition controls",
+        "展开采集控件" to "Show acquisition controls",
+        "关闭应用水印" to "Disable app watermark",
+        "关闭后迹线图背景不再显示半透明的 DroidVNA 标识。" to
+            "When enabled, the faint DroidVNA mark behind the trace chart is hidden.",
+        "界面" to "Interface",
+        "TOUCH VECTOR NETWORK ANALYZER" to "TOUCH VECTOR NETWORK ANALYZER",
+
     )
 
     /**

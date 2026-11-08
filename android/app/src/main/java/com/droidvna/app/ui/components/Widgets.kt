@@ -6,6 +6,7 @@
 
 package com.droidvna.app.ui.components
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -23,6 +24,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material3.Icon
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -31,10 +36,14 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import com.droidvna.app.ui.text.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -44,6 +53,7 @@ import com.droidvna.app.device.ConnectionState
 import com.droidvna.app.device.SourceKind
 import com.droidvna.app.model.SParam
 import com.droidvna.app.ui.chart.color
+import com.droidvna.app.ui.text.tr
 import com.droidvna.app.ui.theme.VnaError
 import com.droidvna.app.ui.theme.VnaOutline
 import com.droidvna.app.ui.theme.VnaPrimary
@@ -88,7 +98,7 @@ fun SectionCard(
 }
 
 @Composable
-fun ConnectionPill(state: ConnectionState, onClick: () -> Unit) {
+fun ConnectionPill(state: ConnectionState, compact: Boolean = false, onClick: () -> Unit) {
     val (label, color) = when (state) {
         is ConnectionState.Connected -> if (state.kind == SourceKind.USB) "USB" to GoodGreen else "DEMO" to VnaSecondary
         is ConnectionState.Connecting -> "CONNECTING" to VnaSecondary
@@ -101,13 +111,23 @@ fun ConnectionPill(state: ConnectionState, onClick: () -> Unit) {
         border = BorderStroke(1.dp, color.copy(alpha = 0.5f)),
         modifier = Modifier.clickable { onClick() },
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(Modifier.size(7.dp).clip(CircleShape).background(color))
-            Spacer(Modifier.width(7.dp))
-            Text(label, color = color, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp)
+        if (compact) {
+            // Narrow screens only get the state colour; the label lives in the tooltip/menu.
+            Row(
+                modifier = Modifier.padding(horizontal = 9.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.size(8.dp).clip(CircleShape).background(color))
+            }
+        } else {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.size(7.dp).clip(CircleShape).background(color))
+                Spacer(Modifier.width(7.dp))
+                Text(label, color = color, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp)
+            }
         }
     }
 }
@@ -296,6 +316,64 @@ fun SettingToggleRow(
             Text(subtitle, color = VnaTextMuted, fontSize = 10.5.sp)
         }
         Switch(checked = checked, onCheckedChange = onChange)
+    }
+}
+
+
+/**
+ * Collapsible container: the content animates its height and fades out, so the chart
+ * smoothly reclaims the space instead of jumping when the controls are hidden.
+ */
+@Composable
+fun CollapsibleSection(
+    expanded: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    val progress = remember { androidx.compose.animation.core.Animatable(if (expanded) 1f else 0f) }
+    LaunchedEffect(expanded) {
+        progress.animateTo(
+            targetValue = if (expanded) 1f else 0f,
+            animationSpec = tween(durationMillis = 180),
+        )
+    }
+    if (progress.value > 0f) {
+        Box(
+            modifier
+                .fillMaxWidth()
+                .clipToBounds()
+                .alpha(progress.value),
+        ) {
+            content()
+        }
+    }
+}
+
+/** Small chevron control used to collapse/expand a control group. */
+@Composable
+fun CollapseToggle(
+    expanded: Boolean,
+    contentDescription: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Surface(
+        color = VnaSurfaceElevated,
+        shape = RoundedCornerShape(10.dp),
+        border = BorderStroke(1.dp, VnaOutline),
+        modifier = modifier.clickable { onClick() },
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                contentDescription = tr(contentDescription),
+                tint = VnaTextMuted,
+                modifier = Modifier.size(18.dp),
+            )
+        }
     }
 }
 

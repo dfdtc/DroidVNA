@@ -1,3 +1,4 @@
+import java.io.File
 import java.util.Properties
 
 plugins {
@@ -7,10 +8,77 @@ plugins {
 }
 
 // Optional release signing. Create android/keystore.properties (git-ignored) to enable it.
-val keystorePropertiesFile = rootProject.file("keystore.properties")
+//
+// storeFile may be absolute or relative; a relative path is resolved against android/ first
+// and then against the repository root, so both "release.jks" and "android/release.jks"
+// and "C:\\keys\\release.jks" work. Missing values are reported instead of silently
+// producing an unsigned APK.
+// android/keystore.properties is the documented location; a file in the repository root
+// is accepted as well so an existing setup keeps working.
+// Search order: android/, repository root, .github/ (a file that was misplaced there).
+val androidKeystorePropertiesFile = rootProject.file("keystore.properties")
+val keystorePropertiesFile = listOf(
+    androidKeystorePropertiesFile,
+    rootProject.file("../keystore.properties").normalize(),
+    rootProject.file("../.github/keystore.properties").normalize(),
+).firstOrNull { it.isFile } ?: androidKeystorePropertiesFile
+// Base directory for a relative storeFile: the folder holding keystore.properties, so the
+// same ../name.jks entry works wherever the properties file lives.
+val keystorePropertiesDir: File = keystorePropertiesFile.parentFile ?: rootProject.projectDir
+val keystorePropertiesPath = keystorePropertiesFile.absolutePath
 val keystoreProperties = Properties().apply {
-    if (keystorePropertiesFile.exists()) {
+    if (keystorePropertiesFile.isFile) {
         keystorePropertiesFile.inputStream().use { load(it) }
+    }
+}
+
+/** Absolute keystore file, or null when it cannot be resolved. */
+val releaseStoreFile: File? = if (!keystorePropertiesFile.isFile) {
+    null
+} else {
+    keystoreProperties.getProperty("storeFile")?.trim()?.takeIf { it.isNotEmpty() }?.let { raw ->
+        val candidate = File(raw)
+        when {
+            candidate.isAbsolute -> candidate
+            // Relative to the properties file first, then to android/ and the repo root.
+            File(keystorePropertiesDir, raw).isFile -> File(keystorePropertiesDir, raw)
+            rootProject.file(raw).isFile -> rootProject.file(raw)
+            else -> File(keystorePropertiesDir, raw)
+        }
+    }
+}
+
+val signingProblem: String? = when {
+    !keystorePropertiesFile.isFile -> null // unsigned release is intentional here
+    keystoreProperties.getProperty("storeFile").isNullOrBlank() -> "storeFile is missing in '" + keystorePropertiesPath + "'"
+    releaseStoreFile == null || !releaseStoreFile.isFile ->
+        "storeFile does not point to an existing file (resolved to " + (releaseStoreFile?.absolutePath ?: "?") + ")"
+    keystoreProperties.getProperty("storePassword").isNullOrBlank() -> "storePassword is missing in '" + keystorePropertiesPath + "'"
+    keystoreProperties.getProperty("keyAlias").isNullOrBlank() -> "keyAlias is missing in '" + keystorePropertiesPath + "'"
+    keystoreProperties.getProperty("keyPassword").isNullOrBlank() -> "keyPassword is missing in '" + keystorePropertiesPath + "'"
+    else -> null
+}
+
+// Fail loudly rather than shipping an unsigned release build, and always state which
+// signing configuration the release build is using.
+gradle.taskGraph.whenReady {
+    val releases = allTasks.any {
+        it.path == ":app:packageRelease" || it.path == ":app:assembleRelease" || it.path == ":app:bundleRelease"
+    }
+    if (!releases) return@whenReady
+    if (signingProblem != null) {
+        throw GradleException(
+            "Release signing is configured but invalid: " + signingProblem +
+                ". Fix android/keystore.properties or delete it to build an unsigned release on purpose."
+        )
+    }
+    if (releaseStoreFile == null) {
+        logger.lifecycle("[signing] No " + keystorePropertiesPath + " found: the release APK is UNSIGNED by design.")
+    } else {
+        logger.lifecycle(
+            "[signing] Release APK will be signed with '" + releaseStoreFile.absolutePath +
+                "' (alias " + keystoreProperties.getProperty("keyAlias") + ")."
+        )
     }
 }
 
@@ -19,12 +87,16 @@ android {
     compileSdk = 36
 
     signingConfigs {
-        if (keystorePropertiesFile.exists()) {
+        if (signingProblem == null && releaseStoreFile != null) {
             create("release") {
-                storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
+                storeFile = releaseStoreFile
                 storePassword = keystoreProperties.getProperty("storePassword")
                 keyAlias = keystoreProperties.getProperty("keyAlias")
                 keyPassword = keystoreProperties.getProperty("keyPassword")
+                // Sign with v1+v2+v3 so the APK installs on API 26 (minSdk) as well.
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
             }
         }
     }
@@ -33,8 +105,8 @@ android {
         applicationId = "com.droidvna.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 6
-        versionName = "0.4.1"
+        versionCode = 7
+        versionName = "0.5.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
     }
@@ -43,7 +115,7 @@ android {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            if (keystorePropertiesFile.exists()) {
+            if (signingProblem == null && releaseStoreFile != null) {
                 signingConfig = signingConfigs.getByName("release")
             }
         }

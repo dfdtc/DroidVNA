@@ -105,6 +105,9 @@ fun CalibrationScreen(vm: MainViewModel) {
     val ecalProgress by vm.ecalProgress.collectAsStateWithLifecycle()
     val ecalMessage by vm.ecalMessage.collectAsStateWithLifecycle()
     val ecalAvailable by vm.ecalAvailable.collectAsStateWithLifecycle()
+    val savedCal by vm.savedCalibration.collectAsStateWithLifecycle()
+    val calEnabled by vm.calibrationEnabled.collectAsStateWithLifecycle()
+    val rememberCal by vm.rememberCalibration.collectAsStateWithLifecycle()
 
     val calFilePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) vm.importCal(uri)
@@ -466,12 +469,33 @@ fun CalibrationScreen(vm: MainViewModel) {
         item { SectionLabel("当前校准状态") }
         item {
             SectionCard {
-                if (calibration.isEmpty) {
+                if (calibration.isEmpty && savedCal.calibration.isEmpty) {
                     Text("尚未应用任何校准。", color = VnaTextMuted, fontSize = 12.sp)
+                } else if (calibration.isEmpty) {
+                    Text("当前没有启用校准（有已保存的校准，可在应用设置里启用）。", color = VnaTextMuted, fontSize = 12.sp)
                 } else {
                     CalibrationChips(calibration, vm)
                 }
+                if (!calibration.isEmpty) {
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ChoiceChip(if (calEnabled) "校准已启用" else "校准已停用", calEnabled) {
+                            vm.setCalibrationEnabled(!calEnabled)
+                        }
+                    }
+                }
                 Spacer(Modifier.height(8.dp))
+                Text(
+                    if (rememberCal) {
+                        "校准会自动保存，下次启动时自动载入" +
+                            if (savedCal.updatedAt.isNotBlank()) "（最近保存 " + savedCal.updatedAt.replace('T', ' ') + "）" else ""
+                    } else {
+                        "校准记忆已关闭：本次运行的校准不会被保存。"
+                    },
+                    color = if (rememberCal) GoodGreen else VnaSecondary,
+                    fontSize = 10.5.sp,
+                )
+                Spacer(Modifier.height(4.dp))
                 Text(
                     "校准按频率插值；大幅改变扫描范围后建议重新校准。",
                     color = VnaTextMuted,

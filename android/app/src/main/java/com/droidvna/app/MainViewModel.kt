@@ -7,11 +7,12 @@
 package com.droidvna.app
 
 import android.app.Application
-import android.content.Context
 import android.hardware.usb.UsbDevice
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.droidvna.app.data.PersistedSettings
+import com.droidvna.app.data.SettingsStore
 import com.droidvna.app.device.ConnectionState
 import com.droidvna.app.device.SourceKind
 import com.droidvna.app.device.VnaRepository
@@ -38,9 +39,15 @@ import com.droidvna.app.usb.EcalSnapshot
 import com.droidvna.app.usb.EcalStandard
 import com.droidvna.app.usb.UsbVnaManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -67,26 +74,51 @@ data class CalDraft(
     fun captures(port: Int): Map<CalStandard, SweepResult> = if (port == 1) p1 else p2
 }
 
+@OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application as DroidVnaApplication
     val repo: VnaRepository = app.repository
     val usb: UsbVnaManager = app.usbManager
 
+    private val settingsStore = SettingsStore(application)
+    private val initialSettings: PersistedSettings = settingsStore.load()
+
     val screen = MutableStateFlow(AppScreen.MEASURE)
-    private val preferences = application.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
 
     val showSweepSheet = MutableStateFlow(false)
     val showExportSheet = MutableStateFlow(false)
     val showAppSettings = MutableStateFlow(false)
     val showTraceSettings = MutableStateFlow(false)
-    val language = MutableStateFlow(AppLanguage.fromKey(preferences.getString("language", null)))
-    val logFrequencyAxis = MutableStateFlow(preferences.getBoolean("log_frequency_axis", false))
-    val chartAutoY = MutableStateFlow(true)
-    val chartMode = MutableStateFlow(ChartMode.DB)
-    val enabledParams = MutableStateFlow(setOf(SParam.S11, SParam.S21))
-    val markers = MutableStateFlow<List<Marker>>(emptyList())
-    val deltaMarkers = MutableStateFlow(false)
+    val language = MutableStateFlow(AppLanguage.fromKey(initialSettings.language))
+    val logFrequencyAxis = MutableStateFlow(initialSettings.logFrequencyAxis)
+    /** Hide the watermark drawn behind the trace chart. */
+    val hideWatermark = MutableStateFlow(initialSettings.hideWatermark)
+    val chartAutoY = MutableStateFlow(initialSettings.chartAutoY)
+    val chartMode = MutableStateFlow(
+        ChartMode.entries.firstOrNull { it.name == initialSettings.chartMode } ?: ChartMode.DB
+    )
+    val enabledParams = MutableStateFlow(
+        initialSettings.enabledParams.mapNotNull { name -> SParam.entries.firstOrNull { it.name == name } }
+            .toSet()
+            .ifEmpty { setOf(SParam.S11, SParam.S21) }
+    )
+    val markers = MutableStateFlow(initialSettings.markerFreqs.mapIndexed { index, freq -> Marker(index + 1, freq) })
+    val deltaMarkers = MutableStateFlow(initialSettings.deltaMarkers)
     val messages = MutableSharedFlow<String>(extraBufferCapacity = 8)
+
+    /** Collapse state of the top control row (trace chips) - the app bar stays visible. */
+    val topControlsCollapsed = MutableStateFlow(initialSettings.topControlsCollapsed)
+    /** Collapse state of the side card column on wide screens. */
+    val sideControlsCollapsed = MutableStateFlow(initialSettings.sideControlsCollapsed)
+
+    /** App settings page: remember the last calibration and restore it on launch. */
+    val rememberCalibration = MutableStateFlow(initialSettings.rememberCalibration)
+    val calibrationEnabled = repo.calibrationEnabled
+    val savedCalibration = repo.savedCalibration
+    /** Restore the sweep configuration of the previous session. */
+    val rememberSweep = MutableStateFlow(initialSettings.sweepConfigured)
+    /** Start sweeping automatically after a device is connected. */
+    val autoStartSweep = MutableStateFlow(initialSettings.autoStartSweep)
 
     val calPort = MutableStateFlow(1)
     val calDraft = MutableStateFlow(CalDraft())
@@ -105,12 +137,46 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val ecalMessage = MutableStateFlow<String?>(null)
     val ecalAvailable = MutableStateFlow(0)
 
+    /** One-shot notice shown on the measure screen after a launch that restored a calibration. */
+    private val _restoreNotice = MutableStateFlow<String?>(null)
+    val restoreNotice: StateFlow<String?> = _restoreNotice
+    /** Index of the most recent calibration activity, used to show "saved" feedback. */
+    val calibrationRevision = MutableStateFlow(0)
+
     private var ecal: EcalDevice? = null
     private var ecalStandards: Map<String, CalKitStandard> = emptyMap()
 
     private var nextMarkerId = 1
+    /** True while the ViewModel itself is changing state (restore/apply) and must not save. */
+    private var applyingState = false
+    /** Last snapshot written to disk, so redundant writes are skipped. */
+    private var lastSavedSettings: PersistedSettings = initialSettings
 
     init {
+        // Restore the sweep configuration before any device is attached.
+        val savedConfig = SweepConfig(
+            startHz = initialSettings.startHz,
+            stopHz = initialSettings.stopHz,
+            points = initialSettings.points,
+            ifbwHz = initialSettings.ifbwHz,
+            powerDbm = initialSettings.powerDbm,
+            twoPort = initialSettings.twoPort,
+            averaging = initialSettings.averaging,
+            logSweep = initialSettings.logSweep,
+            continuous = initialSettings.continuous,
+        )
+        repo.seedConfig(savedConfig)
+        nextMarkerId = markers.value.maxOfOrNull { it.id }?.plus(1) ?: 1
+        repo.restoredCalibration?.takeIf { repo.calibrationEnabled.value }?.let { restored ->
+            val parts = ArrayList<String>()
+            if (restored.calibration.sol.isNotEmpty()) parts.add("SOL " + restored.calibration.sol.size + " 端口")
+            if (restored.calibration.thrus.isNotEmpty()) parts.add("THRU " + restored.calibration.thrus.size / 2 + " 组")
+            val when_ = formatStamp(restored.updatedAt)
+            _restoreNotice.value = "已自动载入上次校准（" + parts.joinToString(" · ") +
+                if (when_.isNotBlank()) "，保存于 " + when_ else "" + "）"
+        }
+        observeSettings()
+
         viewModelScope.launch {
             usb.attached.collect { device ->
                 messages.emit("检测到 " + UsbVnaManager.deviceLabel(device) + "，点击连接")
@@ -139,6 +205,134 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         }
+        // Any calibration change is persisted at once (last good calibration on disk).
+        viewModelScope.launch {
+            repo.calibration.collect { calibrationRevision.value++ }
+        }
+    }
+
+    /**
+     * Writes a debounced snapshot whenever any persisted state changes.
+     *
+     * Every flow is merged (not sampled through snapshotFlow, which only observes Compose
+     * snapshot state and would therefore never see a MutableStateFlow update) and the snapshot
+     * is rebuilt from the current values, so the file is always self-consistent.
+     */
+    private fun observeSettings() {
+        val sources: List<Flow<Any?>> = listOf(
+            language,
+            logFrequencyAxis,
+            hideWatermark,
+            chartMode,
+            enabledParams,
+            chartAutoY,
+            markers,
+            deltaMarkers,
+            topControlsCollapsed,
+            sideControlsCollapsed,
+            rememberSweep,
+            rememberCalibration,
+            calibrationEnabled,
+            autoStartSweep,
+            repo.config,
+            repo.info,
+        )
+        viewModelScope.launch {
+            merge(*sources.toTypedArray())
+                .debounce(SETTINGS_DEBOUNCE_MS)
+                .collect {
+                    if (applyingState) return@collect
+                    val snapshot = settingsSnapshot()
+                    if (snapshot != lastSavedSettings) {
+                        lastSavedSettings = snapshot
+                        settingsStore.save(snapshot)
+                    }
+                }
+        }
+    }
+
+    private fun settingsSnapshot(): PersistedSettings {
+        val config = repo.config.value
+        val info = repo.info.value
+        return PersistedSettings(
+            language = language.value.key,
+            logFrequencyAxis = logFrequencyAxis.value,
+            hideWatermark = hideWatermark.value,
+            chartMode = chartMode.value.name,
+            enabledParams = enabledParams.value.map { it.name }.toSet(),
+            chartAutoY = chartAutoY.value,
+            markerFreqs = markers.value.map { it.freqHz },
+            deltaMarkers = deltaMarkers.value,
+            startHz = config.startHz,
+            stopHz = config.stopHz,
+            points = config.points,
+            ifbwHz = config.ifbwHz,
+            powerDbm = config.powerDbm,
+            twoPort = config.twoPort,
+            averaging = config.averaging,
+            logSweep = config.logSweep,
+            continuous = config.continuous,
+            sweepConfigured = rememberSweep.value,
+            limitMinFreqHz = info?.minFreqHz ?: initialSettings.limitMinFreqHz,
+            limitMaxFreqHz = info?.maxFreqHz ?: initialSettings.limitMaxFreqHz,
+            limitMinIfbwHz = info?.minIfbwHz ?: initialSettings.limitMinIfbwHz,
+            limitMaxIfbwHz = info?.maxIfbwHz ?: initialSettings.limitMaxIfbwHz,
+            limitMaxPoints = info?.maxPoints ?: initialSettings.limitMaxPoints,
+            limitMinPowerDbm = info?.minPowerDbm ?: initialSettings.limitMinPowerDbm,
+            limitMaxPowerDbm = info?.maxPowerDbm ?: initialSettings.limitMaxPowerDbm,
+            limitNumPorts = info?.numPorts ?: initialSettings.limitNumPorts,
+            topControlsCollapsed = topControlsCollapsed.value,
+            sideControlsCollapsed = sideControlsCollapsed.value,
+            rememberCalibration = rememberCalibration.value,
+            calibrationEnabled = calibrationEnabled.value,
+            autoStartSweep = autoStartSweep.value,
+        )
+    }
+
+    fun setRememberCalibration(enabled: Boolean) {
+        rememberCalibration.value = enabled
+        repo.setRememberCalibration(enabled)
+        message(if (enabled) "已开启校准记忆" else "已关闭校准记忆，校准文件已删除")
+    }
+
+    fun setRememberSweep(enabled: Boolean) {
+        rememberSweep.value = enabled
+    }
+
+    fun setAutoStartSweep(enabled: Boolean) {
+        autoStartSweep.value = enabled
+    }
+
+    fun setCalibrationEnabled(enabled: Boolean) {
+        repo.setCalibrationEnabled(enabled)
+    }
+
+    fun forgetCalibration() {
+        repo.forgetCalibration()
+        message("已忘记保存的校准")
+    }
+
+    fun clearRestoreNotice() {
+        _restoreNotice.value = null
+    }
+
+    fun toggleTopControls() {
+        topControlsCollapsed.value = !topControlsCollapsed.value
+    }
+
+    fun toggleSideControls() {
+        sideControlsCollapsed.value = !sideControlsCollapsed.value
+    }
+
+    companion object {
+        private const val SETTINGS_DEBOUNCE_MS = 400L
+    }
+
+    private fun formatStamp(stamp: String): String = try {
+        val parsed = java.time.OffsetDateTime.parse(stamp)
+        parsed.format(java.time.format.DateTimeFormatter.ofPattern("MM-dd HH:mm"))
+    } catch (_: Exception) {
+        ""
     }
 
     fun message(text: String) {
@@ -152,12 +346,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setLanguage(value: AppLanguage) {
         language.value = value
-        preferences.edit().putString("language", value.key).apply()
     }
 
     fun setLogFrequencyAxis(enabled: Boolean) {
         logFrequencyAxis.value = enabled
-        preferences.edit().putBoolean("log_frequency_axis", enabled).apply()
+    }
+
+    fun setHideWatermark(hidden: Boolean) {
+        hideWatermark.value = hidden
     }
 
     fun connect(device: UsbDevice) {
@@ -186,6 +382,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun applyConfig(config: SweepConfig) {
         repo.setConfig(config)
+        // From now on the user's own sweep settings win over the B60 defaults.
+        rememberSweep.value = true
         showSweepSheet.value = false
     }
 
@@ -293,7 +491,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val result = withContext(Dispatchers.Default) {
                     CalibrationFileImporter.parse(text)
                 }
-                repo.setCalibration(result.calibration)
+                repo.setCalibration(result.calibration, source = "IMPORT", detail = result.summary)
                 calDraft.value = CalDraft()
                 val warnings = ArrayList(result.warnings)
                 val serial = repo.info.value?.serial
@@ -606,7 +804,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         step()
                     }
 
-                    repo.setCalibration(CalibrationSet(sols, thrus))
+                    repo.setCalibration(
+                        CalibrationSet(sols, thrus),
+                        source = "ECAL",
+                        detail = ecalSelectedSet.value.ifBlank { "E-Cal" },
+                    )
                     calMessage.value = "电子校准完成：SOL " + sols.size + " 端口 · THRU " + thrus.size / 2 + " 组"
                     ecalMessage.value = calMessage.value
                 } catch (e: Exception) {
@@ -795,6 +997,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     override fun onCleared() {
+        // Persist the last state immediately instead of waiting for the debounce.
+        runCatching { settingsStore.save(settingsSnapshot()) }
         runCatching { ecal?.close() }
         ecal = null
         super.onCleared()

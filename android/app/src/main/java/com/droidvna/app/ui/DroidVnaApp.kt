@@ -12,11 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.SaveAlt
-import androidx.compose.material.icons.filled.Science
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -31,16 +27,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.droidvna.app.AppScreen
 import com.droidvna.app.MainViewModel
-import com.droidvna.app.device.ConnectionState
-import com.droidvna.app.ui.components.ConnectionPill
 import com.droidvna.app.ui.screens.CalibrationScreen
 import com.droidvna.app.ui.screens.DeviceScreen
 import com.droidvna.app.ui.screens.MeasureScreen
@@ -52,7 +44,6 @@ import com.droidvna.app.ui.text.LocalAppLanguage
 import com.droidvna.app.ui.text.Text
 import com.droidvna.app.ui.text.resolved
 import com.droidvna.app.ui.text.translate
-import com.droidvna.app.ui.text.tr
 import com.droidvna.app.ui.theme.VnaBackground
 import com.droidvna.app.ui.theme.VnaText
 import com.droidvna.app.ui.theme.VnaTextMuted
@@ -61,11 +52,9 @@ import com.droidvna.app.ui.theme.VnaTextMuted
 @Composable
 fun DroidVnaApp(vm: MainViewModel) {
     val screen by vm.screen.collectAsStateWithLifecycle()
-    val connection by vm.repo.connection.collectAsStateWithLifecycle()
-    val snackbarHostState = remember { SnackbarHostState() }
-    val compact = LocalConfiguration.current.screenWidthDp < 700
     val language by vm.language.collectAsStateWithLifecycle()
     val resolvedLanguage = language.resolved()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     CompositionLocalProvider(LocalAppLanguage provides resolvedLanguage) {
     LaunchedEffect(resolvedLanguage) {
@@ -80,61 +69,46 @@ fun DroidVnaApp(vm: MainViewModel) {
     Scaffold(
         containerColor = VnaBackground,
         snackbarHost = { SnackbarHost(snackbarHostState) },
+        // The measure screen has no app bar at all: its "DroidVNA" identity is drawn as a
+        // watermark inside the chart, so the plot can use the full available height. All of
+        // its actions live in the single overflow menu on the measure screen itself.
         topBar = {
-            TopAppBar(
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = VnaBackground,
-                    titleContentColor = VnaText,
-                ),
-                navigationIcon = {
-                    if (screen != AppScreen.MEASURE) {
+            if (screen != AppScreen.MEASURE) {
+                TopAppBar(
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = VnaBackground,
+                        titleContentColor = VnaText,
+                    ),
+                    navigationIcon = {
                         IconButton(onClick = { vm.navigate(AppScreen.MEASURE) }) {
-                            Icon(Icons.Default.ArrowBack, contentDescription = "返回", tint = VnaText)
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = VnaText)
                         }
-                    }
-                },
-                title = {
-                    Column {
-                        Text(
-                            text = when (screen) {
-                                AppScreen.MEASURE -> "DroidVNA"
-                                AppScreen.DEVICE -> "设备"
-                                AppScreen.CALIBRATION -> "校准"
-                            },
-                            fontSize = 21.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 0.3.sp,
-                        )
-                        Text(
-                            text = when (screen) {
-                                AppScreen.MEASURE -> "TOUCH VECTOR NETWORK ANALYZER"
-                                AppScreen.DEVICE -> "USB / 状态 / 诊断"
-                                AppScreen.CALIBRATION -> "1-PORT SOL + THRU"
-                            },
-                            fontSize = 8.5.sp,
-                            color = VnaTextMuted,
-                            letterSpacing = 1.2.sp,
-                        )
-                    }
-                },
-                actions = {
-                    ConnectionPill(connection) { vm.navigate(AppScreen.DEVICE) }
-                    if (!compact) {
-                        IconButton(onClick = { vm.showSweepSheet.value = true }) {
-                            Icon(Icons.Default.Tune, contentDescription = "扫描设置", tint = VnaTextMuted)
+                    },
+                    title = {
+                        Column {
+                            Text(
+                                text = when (screen) {
+                                    AppScreen.DEVICE -> "设备"
+                                    else -> "校准"
+                                },
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.3.sp,
+                            )
+                            Text(
+                                text = when (screen) {
+                                    AppScreen.DEVICE -> "USB / 状态 / 诊断"
+                                    else -> "1-PORT SOL + THRU"
+                                },
+                                fontSize = 8.5.sp,
+                                color = VnaTextMuted,
+                                letterSpacing = 1.2.sp,
+                            )
                         }
-                        IconButton(onClick = { vm.navigate(AppScreen.CALIBRATION) }) {
-                            Icon(Icons.Default.Science, contentDescription = "校准", tint = VnaTextMuted)
-                        }
-                        IconButton(onClick = { vm.showExportSheet.value = true }) {
-                            Icon(Icons.Default.SaveAlt, contentDescription = "导出", tint = VnaTextMuted)
-                        }
-                    }
-                    IconButton(onClick = { vm.showAppSettings.value = true }) {
-                        Icon(Icons.Default.Settings, contentDescription = tr("设置"), tint = VnaTextMuted)
-                    }
-                },
-            )
+                    },
+                    actions = { AppOverflowMenu(vm) },
+                )
+            }
         },
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {

@@ -14,6 +14,7 @@ import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -38,6 +39,8 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
@@ -55,6 +58,7 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.PointerEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -126,6 +130,8 @@ fun VnaChart(
     autoY: Boolean = true,
     onAutoYChange: (Boolean) -> Unit = {},
     logFrequencyAxis: Boolean = false,
+    /** Draw the app identity as a faint watermark behind the traces. */
+    showWatermark: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     var viewStart by remember(config.startHz, config.stopHz) { mutableDoubleStateOf(config.startHz.toDouble()) }
@@ -177,11 +183,14 @@ fun VnaChart(
         crosshairFreq = null
     }
 
-    Box(modifier = modifier) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(18.dp))
+            .background(VnaSurface),
+    ) {
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
-                .background(VnaSurface, RoundedCornerShape(18.dp))
                 .pointerInput(Unit) {
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
@@ -300,9 +309,12 @@ fun VnaChart(
             val plot = if (mode == ChartMode.SMITH) smithBounds(size.width, size.height, this)
             else plotBounds(size.width, size.height, this)
             if (mode == ChartMode.SMITH) {
-                drawSmith(result, enabled, markers, plot, this)
+                drawSmith(result, enabled, markers, plot, showWatermark, this)
             } else {
-                drawXy(result, enabled, markers, plot, mode, viewStart, viewStop, yMin, yMax, sweepRate, averagingProgress, calibrated, logFrequencyAxis, this)
+                drawXy(
+                    result, enabled, markers, plot, mode, viewStart, viewStop, yMin, yMax,
+                    sweepRate, averagingProgress, calibrated, logFrequencyAxis, showWatermark, this,
+                )
             }
             crosshairFreq?.let { f ->
                 if (mode == ChartMode.SMITH) drawSmithCrosshair(result, enabled, f, plot, this)
@@ -687,6 +699,7 @@ private fun DrawScope.drawXy(
     averagingProgress: Float,
     calibrated: Boolean,
     logX: Boolean,
+    watermark: Boolean,
     density: Density,
 ) {
     val geometry = ChartGeometry(plot, viewStart, viewStop, yMin, yMax, logX)
@@ -694,6 +707,7 @@ private fun DrawScope.drawXy(
     val labelColor = VnaTextMuted
 
     drawRect(color = Color(0xFF0F171D), topLeft = plot.topLeft, size = plot.size)
+    if (watermark) drawWatermark(plot, density)
     val xTicks = if (logX) logTicks(viewStart, viewStop) else niceTicks(viewStart, viewStop, 6)
     for ((index, t) in xTicks.withIndex()) {
         val x = freqToX(t, geometry)
@@ -849,12 +863,14 @@ private fun DrawScope.drawSmith(
     enabled: Set<SParam>,
     markers: List<Marker>,
     plot: Rect,
+    watermark: Boolean,
     density: Density,
 ) {
     val smith = SmithGeometry(plot.center.x, plot.center.y, plot.width / 2f)
     val grid = Color(0xFF2A3A45)
     val unit = Path().apply { addOval(Rect(smith.cx - smith.radius, smith.cy - smith.radius, smith.cx + smith.radius, smith.cy + smith.radius)) }
     drawCircle(Color(0xFF0F171D), radius = smith.radius, center = Offset(smith.cx, smith.cy))
+    if (watermark) drawWatermark(plot, density)
     clipPath(unit) {
         val resistances = listOf(0.0, 0.2, 0.5, 1.0, 2.0, 5.0)
         for (r in resistances) {
@@ -966,6 +982,25 @@ private fun DrawScope.drawTooltip(lines: List<String>, anchorX: Float, plot: Rec
         drawContext.canvas.nativeCanvas.drawText(line, x + pad, ty, paint)
         ty += lineHeight
     }
+}
+
+/**
+ * App identity painted inside the plot, behind the traces. Kept faint so it reads as paper
+ * stock rather than as a label, and drawn straight into the canvas so it never fights the
+ * axis labels or the marker tooltip for space.
+ */
+private fun DrawScope.drawWatermark(plot: Rect, density: Density) {
+    val title = textPaint(VnaText.copy(alpha = 0.13f), 26f, density).apply {
+        typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
+    }
+    val subtitle = textPaint(VnaTextMuted.copy(alpha = 0.13f), 8f, density).apply {
+        typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.NORMAL)
+    }
+    // Sits below the sweep-status chip in the top-left corner of the plot.
+    val x = plot.left + 14.dp.toPx()
+    val baseline = plot.top + 78.dp.toPx()
+    drawTextAt("DroidVNA", x, baseline, title)
+    drawTextAt("TOUCH VECTOR NETWORK ANALYZER", x + 1.dp.toPx(), baseline + 15.dp.toPx(), subtitle)
 }
 
 private fun textPaint(color: Color, sizeSp: Float, density: Density): android.graphics.Paint {

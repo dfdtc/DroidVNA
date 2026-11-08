@@ -9,6 +9,7 @@ package com.droidvna.app.device
 import android.content.Context
 import android.hardware.usb.UsbDevice
 import com.droidvna.app.data.CalibrationStore
+import com.droidvna.app.data.StoredCalibration
 import com.droidvna.app.model.CalMath
 import com.droidvna.app.model.CalStandard
 import com.droidvna.app.model.CalibrationEngine
@@ -47,11 +48,21 @@ import kotlin.math.sqrt
 class VnaRepository(
     context: Context,
     private val usb: UsbVnaManager,
+    /** False makes the app forget the calibration as soon as it changes. */
+    @Volatile
+    private var rememberEnabled: Boolean = true,
+    /** False leaves the VNA in standby after connecting ("连接后自动连续扫描"). */
+    private val autoStart: () -> Boolean = { true },
 ) {
     private val appContext = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val store = CalibrationStore(appContext)
     private val controlMutex = Mutex()
+
+    /** The calibration exactly as it was stored on the previous run. */
+    private val storedCalibration: StoredCalibration = store.loadFile()
+
+    private fun rememberCalibration(): Boolean = rememberEnabled
 
     val connection = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
     val info = MutableStateFlow<VnaDeviceInfo?>(null)
@@ -64,7 +75,19 @@ class VnaRepository(
     val sweepRate = MutableStateFlow(0.0)
     val sweepCount = MutableStateFlow(0L)
     val averagingProgress = MutableStateFlow(1.0)
-    val calibration = MutableStateFlow(store.load())
+    /** Calibration currently used for the sweeps. */
+    val calibration = MutableStateFlow(if (rememberCalibration()) storedCalibration.calibration else CalibrationSet())
+    /** The last good calibration on disk, kept even while the correction is switched off. */
+    val savedCalibration = MutableStateFlow(storedCalibration)
+    /** Apply the stored calibration to the sweeps (the coefficients are kept either way). */
+    val calibrationEnabled = MutableStateFlow(
+        rememberCalibration() && storedCalibration.calibration.isEmpty.not(),
+    )
+    /** True when the stored calibration was loaded on this launch. */
+    var restoredCalibration: StoredCalibration? = null
+        private set
+    /** True once a sweep configuration from the previous session has been applied. */
+    private var configRestored = false
     val logs = MutableStateFlow<List<String>>(emptyList())
     val lastError = MutableStateFlow<String?>(null)
     val singleSweep = MutableStateFlow(false)
@@ -93,6 +116,13 @@ class VnaRepository(
 
     init {
         addLog("DroidVNA ready. " + calibration.value.sol.size + " SOL cal(s) loaded.")
+        if (calibrationEnabled.value) {
+            restoredCalibration = storedCalibration
+            addLog(
+                "Restored calibration from " + storedCalibration.updatedAt.ifBlank { "previous run" } +
+                    " (" + calibration.value.sol.size + " SOL, " + (calibration.value.thrus.size / 2) + " THRU)"
+            )
+        }
         scope.launch {
             usb.devices.collect { devices ->
                 val name = connectedUsbName ?: return@collect
@@ -121,8 +151,39 @@ class VnaRepository(
         logs.value = emptyList()
     }
 
+    /** Turns calibration persistence on or off; turning it off deletes the saved file. */
+    fun setRememberCalibration(enabled: Boolean) {
+        rememberEnabled = enabled
+        if (!enabled) {
+            store.clear()
+            savedCalibration.value = StoredCalibration(deviceKey = calibrationKey)
+            addLog("Calibration memory disabled")
+        } else {
+            val record = StoredCalibration(
+                calibration = calibration.value,
+                deviceKey = calibrationKey,
+                source = savedCalibration.value.source,
+                updatedAt = savedCalibration.value.updatedAt,
+                detail = savedCalibration.value.detail,
+            )
+            savedCalibration.value = record
+            store.saveFile(record)
+            addLog("Calibration memory enabled")
+        }
+    }
+
     fun setLastError(message: String?) {
         lastError.value = message
+    }
+
+    /**
+     * Applies the sweep configuration remembered from the previous session. The value is
+     * used as-is (not clamped against the device defaults) so points/IFBW that are valid for
+     * the real hardware are kept even before it is connected.
+     */
+    fun seedConfig(saved: SweepConfig) {
+        config.value = saved
+        configRestored = true
     }
 
     fun setConfig(newConfig: SweepConfig) {
@@ -237,15 +298,21 @@ class VnaRepository(
                     addLog("Warning: device protocol " + src.info.protocolVersion + ", app expects 14")
                 }
                 var cfg = config.value.clamped(src.info)
-                if (src.info.hardwareName == "Harogic B60") {
+                if (src.info.hardwareName == "Harogic B60" && !configRestored) {
                     // VNB-60 firmware 1.8.6 is much more usable at its high IFBW; 10 kHz makes
                     // each point take seconds. Leave the point count modest for a quick first view.
+                    // A configuration restored from the last session is never overridden.
                     cfg = cfg.copy(ifbwHz = minOf(75_000, src.info.maxIfbwHz))
+                }
+                // "连接后自动连续扫描" can be switched off: the device is configured but
+                // left in standby until the user presses Start.
+                if (!autoStart()) {
+                    cfg = cfg.copy(continuous = false)
                 }
                 config.value = cfg
                 resetAveraging()
-                val ok = controlMutex.withLock { src.start(cfg, standby = false) }
-                running.value = ok
+                val ok = controlMutex.withLock { src.start(cfg, standby = !cfg.continuous) }
+                running.value = ok && cfg.continuous
                 if (!ok) lastError.value = "设备拒绝扫描设置"
                 usb.refresh()
             } catch (e: Exception) {
@@ -272,11 +339,12 @@ class VnaRepository(
                 clearDisplay()
                 val src = DemoVnaSource()
                 attachSource(src, SourceKind.DEMO, "Demo DUT")
-                val cfg = config.value.clamped(src.info)
+                var cfg = config.value.clamped(src.info)
+                if (!autoStart()) cfg = cfg.copy(continuous = false)
                 config.value = cfg
                 resetAveraging()
-                val ok = controlMutex.withLock { src.start(cfg, standby = false) }
-                running.value = ok
+                val ok = controlMutex.withLock { src.start(cfg, standby = !cfg.continuous) }
+                running.value = ok && cfg.continuous
                 addLog("Demo mode: synthetic 1.75–2.65 GHz band-pass DUT")
             } catch (e: Exception) {
                 connection.value = ConnectionState.Error("Demo 启动失败: " + (e.message ?: "unknown"))
@@ -292,8 +360,20 @@ class VnaRepository(
         val key = calibrationKeyFor(src.info)
         calibrationKey = key
         if (calibration.value.sourceKey != key) {
-            calibration.value = CalibrationSet(sourceKey = key)
-            store.save(calibration.value)
+            // The remembered calibration was measured on a different VNA: it is not applied
+            // here, but the snapshot on disk is kept so switching back restores it.
+            val restorable = storedCalibration.calibration.takeIf {
+                it.sourceKey == key && restoredCalibration?.calibration?.sourceKey != key
+            }
+            calibration.value = restorable ?: CalibrationSet(sourceKey = key)
+            calibrationEnabled.value = restorable != null && rememberCalibration()
+            if (restorable == null) {
+                persistCalibration(CalibrationSet(sourceKey = key), "NONE")
+            } else {
+                addLog("Restored stored calibration for device " + key)
+            }
+        } else if (!rememberCalibration()) {
+            calibrationEnabled.value = false
         }
         sourceKind.value = kind
         connection.value = ConnectionState.Connected(kind, label)
@@ -592,18 +672,70 @@ class VnaRepository(
         return null
     }
 
-    fun setCalibration(set: CalibrationSet) {
+    fun setCalibration(set: CalibrationSet, source: String = "MIXED", detail: String = "") {
         val keyed = set.copy(sourceKey = calibrationKey)
         calibration.value = keyed
-        store.save(keyed)
+        calibrationEnabled.value = true
+        persistCalibration(keyed, if (keyed.isEmpty) "NONE" else source, detail)
         resetAveraging()
     }
 
     fun clearCalibration() {
         calibration.value = CalibrationSet(sourceKey = calibrationKey)
-        store.save(calibration.value)
+        persistCalibration(calibration.value, "NONE")
         resetAveraging()
         addLog("Calibration cleared")
+    }
+
+    /**
+     * Switches the correction off without deleting the coefficients, so a measurement can be
+     * compared against the uncalibrated device and the calibration re-enabled later.
+     */
+    fun setCalibrationEnabled(enabled: Boolean) {
+        if (!enabled) {
+            calibrationEnabled.value = false
+            addLog("Calibration disabled (coefficients kept)")
+            return
+        }
+        if (calibration.value.isEmpty) {
+            val stored = storedCalibration.calibration
+            if (stored.isEmpty || stored.sourceKey != calibrationKey) return
+            calibration.value = stored
+        }
+        calibrationEnabled.value = true
+        resetAveraging()
+        addLog("Calibration enabled")
+    }
+
+    /** Removes the calibration file: nothing is restored on the next launch. */
+    fun forgetCalibration() {
+        store.clear()
+        calibration.value = CalibrationSet(sourceKey = calibrationKey)
+        savedCalibration.value = StoredCalibration(deviceKey = calibrationKey)
+        calibrationEnabled.value = false
+        resetAveraging()
+        addLog("Stored calibration forgotten")
+    }
+
+    private fun persistCalibration(set: CalibrationSet, source: String, detail: String = "") {
+        if (!rememberCalibration()) {
+            store.clear()
+            savedCalibration.value = StoredCalibration(deviceKey = calibrationKey)
+            return
+        }
+        val previous = savedCalibration.value
+        val stamp = java.time.OffsetDateTime.now(java.time.ZoneId.systemDefault()).withNano(0).toString()
+        val record = StoredCalibration(
+            calibration = set,
+            deviceKey = calibrationKey,
+            source = source,
+            updatedAt = if (set.isEmpty) previous.updatedAt else stamp,
+            detail = detail.ifBlank { if (previous.deviceKey == calibrationKey) previous.detail else "" },
+        )
+        savedCalibration.value = record
+        // The snapshot lives in the app's private files directory (Android apps have no
+        // world-readable /tmp), so the last good calibration survives a restart or crash.
+        store.saveFile(record)
     }
 
     private fun calibrationKeyFor(info: VnaDeviceInfo?): String {
@@ -613,11 +745,14 @@ class VnaRepository(
     }
 
     fun clearSol(port: Int) {
-        setCalibration(calibration.value.copy(sol = calibration.value.sol.filterNot { it.port == port }))
+        setCalibration(
+            calibration.value.copy(sol = calibration.value.sol.filterNot { it.port == port }),
+            source = "MIXED",
+        )
     }
 
     fun clearThru() {
-        setCalibration(calibration.value.copy(thrus = emptyList()))
+        setCalibration(calibration.value.copy(thrus = emptyList()), source = "MIXED")
     }
 
     fun shutdown() {

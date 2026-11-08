@@ -40,6 +40,10 @@ fun TraceSettingsSheet(vm: MainViewModel) {
     val show by vm.showTraceSettings.collectAsStateWithLifecycle()
     if (!show) return
     val logAxis by vm.logFrequencyAxis.collectAsStateWithLifecycle()
+    val autoY by vm.chartAutoY.collectAsStateWithLifecycle()
+    val mode by vm.chartMode.collectAsStateWithLifecycle()
+    val enabled by vm.enabledParams.collectAsStateWithLifecycle()
+    val delta by vm.deltaMarkers.collectAsStateWithLifecycle()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     ModalBottomSheet(
@@ -70,6 +74,29 @@ fun TraceSettingsSheet(vm: MainViewModel) {
                     subtitle = "X 轴按对数频率显示",
                     checked = logAxis,
                 ) { vm.setLogFrequencyAxis(it) }
+            }
+
+            SectionCard(title = "Y 轴") {
+                SettingToggleRow(
+                    title = "Y 轴自动缩放",
+                    subtitle = "关闭后锁定当前 Y 轴范围，与双击图表恢复自动等效。",
+                    checked = autoY,
+                ) { vm.chartAutoY.value = it }
+            }
+
+            SectionCard(title = "当前迹线") {
+                Text(
+                    "迹线与模式：" + enabled.joinToString(" + ") { it.label } + " · " + mode.label +
+                        if (delta) " · Δ 标记" else "",
+                    color = VnaTextMuted,
+                    fontSize = 11.5.sp,
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "这些选择会随设置记忆自动保存，下次启动时恢复。",
+                    color = VnaTextMuted,
+                    fontSize = 10.5.sp,
+                )
             }
 
             Text(

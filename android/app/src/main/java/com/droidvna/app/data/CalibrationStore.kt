@@ -15,13 +15,38 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 
-/** Persists the calibration in the app's private storage. */
+/**
+ * One persisted calibration together with what it was measured with and how it was
+ * obtained. The metadata is shown in the app settings and in the calibration wizard.
+ */
+// Plain data holders: Array fields are compared by identity, which is fine here because
+// instances are only ever created by parsing and handed to the UI as a whole.
+data class StoredCalibration(
+    val calibration: CalibrationSet = CalibrationSet(),
+    /** Serial (or "demo") of the device the calibration belongs to. */
+    val deviceKey: String = "",
+    /** How the calibration was created: "ECAL", "SOL", "THRU", "IMPORT", "MIXED", "NONE". */
+    val source: String = "NONE",
+    /** RFC 3339 timestamp of the last update, empty when unknown. */
+    val updatedAt: String = "",
+    /** Coefficient set name for E-Cal calibrations. */
+    val detail: String = "",
+)
+
+/**
+ * Persists the calibration in the app's private storage.
+ *
+ * The file is a timestamped snapshot ("last good calibration"): every time a calibration is
+ * changed it is rewritten atomically, and on the next launch it is loaded automatically so
+ * a measurement session can continue without re-running SOL/THRU or E-Cal.
+ */
 class CalibrationStore(context: Context) {
     private val file = File(context.filesDir, "calibration.json")
+    private val tempFile = File(context.filesDir, "calibration.json.tmp")
 
     @Synchronized
-    fun load(): CalibrationSet {
-        if (!file.exists()) return CalibrationSet()
+    fun loadFile(): StoredCalibration {
+        if (!file.exists()) return StoredCalibration()
         return try {
             val root = JSONObject(file.readText())
             val sol = ArrayList<SolCal>()
@@ -53,16 +78,42 @@ class CalibrationStore(context: Context) {
                     )
                 )
             }
-            CalibrationSet(sol, thrus, root.optString("sourceKey", ""))
-        } catch (e: Exception) {
-            CalibrationSet()
+            val set = CalibrationSet(sol, thrus, root.optString("sourceKey", ""))
+            StoredCalibration(
+                calibration = set,
+                deviceKey = set.sourceKey,
+                source = if (set.isEmpty) "NONE" else root.optString("calSource", "MIXED").ifBlank { "MIXED" },
+                updatedAt = root.optString("updatedAt", ""),
+                detail = root.optString("calDetail", ""),
+            )
+        } catch (_: Exception) {
+            StoredCalibration()
         }
     }
 
+    /** Previous behaviour: the coefficients only. */
+    @Synchronized
+    fun load(): CalibrationSet = loadFile().calibration
+
     @Synchronized
     fun save(set: CalibrationSet) {
+        val previous = loadFile()
+        saveFile(
+            StoredCalibration(
+                calibration = set,
+                deviceKey = set.sourceKey,
+                source = previous.source.takeIf { previous.deviceKey == set.sourceKey } ?: "MIXED",
+                updatedAt = previous.updatedAt,
+                detail = previous.detail.takeIf { previous.deviceKey == set.sourceKey } ?: "",
+            )
+        )
+    }
+
+    @Synchronized
+    fun saveFile(record: StoredCalibration) {
         try {
             val root = JSONObject()
+            val set = record.calibration
             val solArray = JSONArray()
             for (cal in set.sol) {
                 val obj = JSONObject()
@@ -87,11 +138,34 @@ class CalibrationStore(context: Context) {
             root.put("sol", solArray)
             root.put("thrus", thruArray)
             root.put("sourceKey", set.sourceKey)
-            root.put("version", 1)
-            file.writeText(root.toString())
+            root.put("calSource", if (set.isEmpty) "NONE" else record.source)
+            root.put("calDetail", record.detail)
+            root.put("updatedAt", record.updatedAt.ifBlank { nowStamp() })
+            root.put("version", 2)
+            tempFile.writeText(root.toString())
+            if (!tempFile.renameTo(file)) {
+                file.writeText(root.toString())
+                tempFile.delete()
+            }
         } catch (_: Exception) {
+            runCatching { tempFile.delete() }
         }
     }
+
+    /** "Forget" removes the remembered calibration from disk. */
+    @Synchronized
+    fun clear() {
+        runCatching { file.delete() }
+        runCatching { tempFile.delete() }
+    }
+
+    @Synchronized
+    fun summary(): StoredCalibration = loadFile()
+
+    private fun nowStamp(): String =
+        java.time.OffsetDateTime.now(java.time.ZoneId.systemDefault())
+            .withNano(0)
+            .toString()
 
     private fun longArray(array: LongArray): JSONArray {
         val out = JSONArray()
