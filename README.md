@@ -30,8 +30,8 @@
 
 ## 项目状态
 
-- 当前版本 **0.4.1**（versionCode 6），要求 Android 8.0（API 26）及以上。
-- 仓库内提供预构建的 debug APK：[dist/DroidVNA-0.4.1-debug.apk](dist/DroidVNA-0.4.1-debug.apk)，也可以从 GitHub Releases 下载。
+- 当前版本 **0.4.1**（versionCode 6），要求 Android 8.0（API 26）及以上；compileSdk / targetSdk 36。
+- 仓库内提供预构建的 **release** APK：[dist/DroidVNA-0.4.1-release.apk](dist/DroidVNA-0.4.1-release.apk)，也可以从 GitHub Releases 下载。
 - 已在 Xiaomi Pad（Android 17）+ Harogic B60（FW 1.8.6）上完成真机验证；ECB-60（FW 0.3.2）的 USB、系数读取和校准流程已实机跑通，但 0.4.0 及之前的校准结果存在 Smith 杂散，0.4.1 已改为 all-port 标准切换，等待实机复测；LibreVNA 官方硬件尚未上机实测。
 - 变更记录见 [CHANGELOG.md](CHANGELOG.md)，发布流程见 [docs/RELEASING.md](docs/RELEASING.md)。
 
@@ -95,16 +95,16 @@
 已构建的 debug APK（仓库内）：
 
 ```
-dist/DroidVNA-0.4.1-debug.apk
-大小: 16,916,694 字节
-SHA-256: E4E05DD326657ADEB9A311FEC287569FB0CA623797D50EF185DF592FADE99809
+dist/DroidVNA-0.4.1-release.apk
+大小: 12,250,123 字节
+SHA-256: ADD9B6F94FDF1F4187F550CF0511D44EBE1425A1AE6A6090C9BC5BF785078518
 ```
 
 ```bash
-adb install -r dist/DroidVNA-0.4.1-debug.apk
+adb install -r dist/DroidVNA-0.4.1-release.apk
 ```
 
-也可以从仓库的 **Releases** 页面下载同一版本。debug APK 使用 Android 默认 debug 签名，适合测试；正式分发请按 [docs/RELEASING.md](docs/RELEASING.md) 使用自己的 release keystore。
+也可以从仓库的 **Releases** 页面下载同一版本。该 APK 是 release 构建，但使用一份**临时自签名证书**（CN=DroidVNA Temp）签署，仅供测试；正式分发请按 [docs/RELEASING.md](docs/RELEASING.md) 用自己的 keystore 重新签名。
 
 小米/红米/HyperOS 如果报：
 
@@ -115,8 +115,8 @@ INSTALL_FAILED_USER_RESTRICTED: Install canceled by user
 请使用 shell 安装方式（本机验证可用）：
 
 ```bash
-adb push dist/DroidVNA-0.4.1-debug.apk /data/local/tmp/librevna.apk
-adb shell pm install -r -t /data/local/tmp/librevna.apk
+adb push dist/DroidVNA-0.4.1-release.apk /data/local/tmp/droidvna.apk
+adb shell pm install -r -t /data/local/tmp/droidvna.apk
 ```
 
 或在开发者选项中打开 **USB 安装 / 通过 USB 安装应用**。应用本身只需要 USB Host 访问权限，不需要 root。
@@ -231,9 +231,9 @@ B60（VNB-60，FW 1.8.6，HW 0xD0）有一个已知的固件行为：连接后�
 
 环境：
 
-- JDK **17 或 21**（本机构建使用 Corretto 21；Gradle 8.10.2 与 JDK 25 不兼容，Android Studio 自带 JBR 25 不能直接用于本项目）
-- Android SDK Platform 35、Build-Tools 35.0.0
-- Gradle 8.10.2（项目自带 wrapper）
+- JDK **17 或 21**（本机构建使用 Corretto 21；建议用 JDK 21，Android Studio 自带 JBR 可直接使用）
+- Android SDK Platform 36、Build-Tools 36.0.0（首次构建时 Gradle 会自动安装 Platform 36）
+- Gradle 8.14.4（项目自带 wrapper）
 
 ```bash
 cd android
@@ -263,7 +263,7 @@ Copy-Item local.properties.example local.properties
 
 ### Release 签名
 
-仓库内 APK 使用 debug 签名。要生成可正式分发的 APK：
+仓库内的 APK 使用临时自签名证书。要生成可正式分发的 APK：
 
 ```bash
 cd android
@@ -274,7 +274,7 @@ cp keystore.properties.example keystore.properties
 
 `keystore.properties`、`*.jks`、`*.keystore` 已在 `.gitignore` 中。请离线备份 keystore 和密码；丢失后无法覆盖升级已安装的应用。完整步骤见 [docs/RELEASING.md](docs/RELEASING.md)。
 
-技术栈：Kotlin 2.1、Jetpack Compose（Material 3）、AGP 8.8、compileSdk 35、minSdk 26。没有 native 库，APK 可直接安装到 arm64 / x86_64 设备。
+技术栈：Kotlin 2.4.21、Jetpack Compose（Material 3，BOM 2025.10.01）、AGP 8.13.2、Gradle 8.14.4、compileSdk / targetSdk 36、minSdk 26。没有 native 库，APK 可直接安装到 arm64 / x86_64 设备。
 
 持续集成：[.github/workflows/android.yml](.github/workflows/android.yml) 在每次 push / PR 时运行单元测试并构建 debug APK。
 
@@ -332,7 +332,7 @@ dist/                            预构建 APK
 - 没有独立的 Touchstone 校准套件文件导入；`.cal` 导入仅重建 1 端口 SOL + THRU，不包含完整 SOLT 误差项。
 - E-Cal 固定 VNA P1/P2 ↔ Cal P1/P2 映射，不包含自动端口识别；需要带外部供电的 OTG Hub。
 - 图表为自绘 Compose Canvas，极大点数（>1001）未做性能优化。
-- 仓库内预构建 APK 为 debug 签名；正式分发请配置自己的 release keystore。
+- 仓库内预构建 APK 为 release 构建 + 临时自签名证书；正式分发请配置自己的 release keystore 重新构建。
 - 在手机上使用前建议先用演示模式确认布局与操作。
 - 英文翻译覆盖主要界面和常见消息；极少数底层设备/协议日志可能保留原文。
 

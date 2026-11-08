@@ -14,8 +14,8 @@
 ## 开发环境
 
 - JDK 17 或 21
-- Android SDK Platform 35、Build-Tools 35.0.0
-- Gradle 8.10.2（使用仓库自带 wrapper）
+- Android SDK Platform 36、Build-Tools 36.0.0
+- Gradle 8.14.4（使用仓库自带 wrapper）
 - 一台支持 USB Host / OTG 的 Android 8.0+ 设备，以及可用的 VNA 或演示模式
 
 ```bash

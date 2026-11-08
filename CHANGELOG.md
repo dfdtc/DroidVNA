@@ -5,6 +5,18 @@
 
 ## [0.4.1] - 2026-11-08
 
+### 构建与依赖
+
+- 工具链升级：Gradle **8.14.4**、AGP **8.13.2**、Kotlin **2.4.21**，`kotlinOptions.jvmTarget` 迁移到
+  `compilerOptions` DSL；compileSdk / targetSdk 升到 **36**。
+- AndroidX 依赖升级：Compose BOM 2025.10.01、core-ktx 1.17.0、activity-compose 1.11.0、
+  lifecycle 2.9.4、kotlinx-coroutines 1.11.0、org.json 20260814（未使用需要 AGP 9 / compileSdk 37 的版本）。
+- GitHub Actions 升级到消除 Node 20 弃用告警的版本：`checkout@v7`、`setup-java@v6`、
+  `setup-android@v4`、`gradle/actions/setup-gradle@v6`、`upload-artifact@v7`；
+  CI 安装 `platforms;android-36` 与 `build-tools;36.0.0`。
+- 新增 release 构建产物 `dist/DroidVNA-0.4.1-release.apk`（临时自签名证书，仅供测试）。
+
+
 ### 变更
 
 - **应用更名为 DroidVNA**：应用名、包名（`com.droidvna.app`）、Gradle `rootProject.name`、导出目录
