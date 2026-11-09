@@ -39,6 +39,8 @@ sealed class CalStandardModel {
         val c3: Double,
     ) : CalStandardModel() {
         override fun s11At(freqHz: Double): Complex {
+            // At DC the capacitive termination degenerates into 1/0; the limit is an ideal open.
+            if (freqHz <= 0.0) return Complex.ONE
             val c = c0 * 1e-15 + c1 * 1e-27 * freqHz + c2 * 1e-36 * freqHz.pow(2) + c3 * 1e-45 * freqHz.pow(3)
             val open = if (c == 0.0) {
                 Complex.ONE
@@ -79,7 +81,8 @@ sealed class CalStandardModel {
         override fun s11At(freqHz: Double): Complex {
             var imp = Complex(resistance, 0.0)
             if (cFirst) imp += Complex(0.0, 2.0 * PI * freqHz * lSeries)
-            if (cParallel > 0.0) {
+            // A shunt capacitor is an open at DC; evaluating 1/(j*w*C) there would give NaN.
+            if (cParallel > 0.0 && freqHz > 0.0) {
                 val impC = Complex(0.0, -1.0 / (2.0 * PI * freqHz * cParallel))
                 imp = (imp * impC) / (imp + impC)
             }
@@ -96,6 +99,9 @@ sealed class CalStandardModel {
     ) : CalStandardModel() {
         private fun params(freqHz: Double): Pair<Complex, Complex> {
             val w = 2.0 * PI * freqHz
+            // At DC the loss term is 0/0. The limit of this model is an ideal through, which is
+            // also what addTransmissionLine below assumes for w == 0.
+            if (w <= 0.0) return Complex.ZERO to Complex.ONE
             val fSqrt = sqrt(freqHz / 1e9)
             val offsetDelay = delayPs * 1e-12
             val offsetLoss = loss * 1e9

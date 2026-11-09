@@ -8,6 +8,8 @@ package com.droidvna.app.device
 
 import com.droidvna.app.model.CalStandard
 import com.droidvna.app.model.Complex
+import com.droidvna.app.model.SoltErrorModel
+import com.droidvna.app.model.SoltTerms
 import com.droidvna.app.model.SweepConfig
 import com.droidvna.app.model.SweepResult
 import com.droidvna.app.model.VnaDeviceInfo
@@ -31,8 +33,10 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
- * A synthetic LibreVNA with a 1.75-2.65 GHz band-pass DUT and a plausible systematic error
- * model. It makes the whole UI (including SOL calibration) usable without hardware.
+ * A synthetic LibreVNA with a 1.75-2.65 GHz band-pass DUT and a realistic 12-term error model.
+ *
+ * The raw sweeps are produced by [SoltErrorModel], the exact inverse of the correction in
+ * `SoltMath`, so a full SOLT calibration can be run and verified end-to-end without hardware.
  */
 class DemoVnaSource : VnaSource {
     override val info = VnaDeviceInfo(
@@ -71,6 +75,7 @@ class DemoVnaSource : VnaSource {
     @Volatile private var calPort = 0
     @Volatile private var calKind: CalStandard? = null
     @Volatile private var calThru = false
+    @Volatile private var calIsolation = false
 
     override suspend fun start(config: SweepConfig, standby: Boolean): Boolean {
         currentConfig = config
@@ -129,18 +134,28 @@ class DemoVnaSource : VnaSource {
         calPort = port
         calKind = kind
         calThru = false
+        calIsolation = false
+    }
+
+    override suspend fun prepareCalIsolation() {
+        calPort = 0
+        calKind = null
+        calThru = false
+        calIsolation = true
     }
 
     override suspend fun prepareCalThru() {
         calPort = 0
         calKind = null
         calThru = true
+        calIsolation = false
     }
 
     override suspend fun clearCalPreparation() {
         calPort = 0
         calKind = null
         calThru = false
+        calIsolation = false
     }
 
     private fun sweepDurationMs(config: SweepConfig): Long {
@@ -159,30 +174,24 @@ class DemoVnaSource : VnaSource {
         val s22 = Array(n) { Complex.NAN }
         val random = java.util.Random(System.nanoTime())
         val noiseScale = 0.00045 * sqrt(config.ifbwHz / 10_000.0)
+
         for (i in 0 until n) {
             val f = frequencies[i].toDouble()
-            val dut = if (calKind != null) standardDut(f, calPort, calKind!!) else if (calThru) thruDut(f) else filterDut(f)
-            var m11 = dut[0]
-            var m21 = dut[1]
-            var m12 = dut[2]
-            var m22 = dut[3]
-
-            // 1-port SOL error model on both ports.
-            val prod1 = Complex(0.92, 0.20)
-            val e001 = Complex(0.020 + 0.004 * sin(2 * PI * f / 1.5e9), 0.012)
-            val e111 = Complex(0.035, -0.045)
-            val prod2 = Complex(0.90, 0.24)
-            val e002 = Complex(0.016 + 0.003 * cos(2 * PI * f / 1.2e9), -0.010)
-            val e112 = Complex(0.040, -0.030)
-            m11 = applyError(m11, e001, e111, prod1)
-            m22 = applyError(m22, e002, e112, prod2)
-            m21 = m21 * Complex(0.975, -0.08) + Complex(0.0007, 0.0004)
-            m12 = m12 * Complex(0.968, -0.10) + Complex(0.0006, -0.0005)
-
-            s11[i] = m11 + Complex(random.nextGaussian() * noiseScale, random.nextGaussian() * noiseScale)
-            s21[i] = m21 + Complex(random.nextGaussian() * noiseScale, random.nextGaussian() * noiseScale)
-            s12[i] = m12 + Complex(random.nextGaussian() * noiseScale, random.nextGaussian() * noiseScale)
-            s22[i] = m22 + Complex(random.nextGaussian() * noiseScale, random.nextGaussian() * noiseScale)
+            val ideal = actualDut(f)
+            val measured = SoltErrorModel.measure(ideal, errorTerms(f))
+            if (measured == null) {
+                s11[i] = Complex.NAN
+                s21[i] = Complex.NAN
+                s12[i] = Complex.NAN
+                s22[i] = Complex.NAN
+                continue
+            }
+            fun noisy(v: Complex): Complex =
+                v + Complex(random.nextGaussian() * noiseScale, random.nextGaussian() * noiseScale)
+            s11[i] = noisy(measured[0][0])
+            s21[i] = noisy(measured[1][0])
+            s12[i] = noisy(measured[0][1])
+            s22[i] = noisy(measured[1][1])
         }
         if (!config.twoPort) {
             for (i in 0 until n) {
@@ -201,14 +210,65 @@ class DemoVnaSource : VnaSource {
         )
     }
 
-    private fun applyError(gamma: Complex, e00: Complex, e11: Complex, prod: Complex): Complex {
-        val denom = Complex.ONE - e11 * gamma
-        if (denom.abs() < 1e-12) return e00
-        return e00 + prod * gamma / denom
+    /**
+     * The system error boxes of the synthetic device. Deliberately non-zero in every term so a
+     * SOLT calibration has something to find; the values roughly match a real LibreVNA.
+     */
+    private fun errorTerms(f: Double): SoltTerms = SoltTerms(
+        d1 = Complex(0.020 + 0.004 * sin(2 * PI * f / 1.5e9), 0.012),
+        s1 = Complex(0.035, -0.045),
+        r1 = Complex(0.92, 0.20),
+        d2 = Complex(0.016 + 0.003 * cos(2 * PI * f / 1.2e9), -0.010),
+        s2 = Complex(0.040, -0.030),
+        r2 = Complex(0.90, 0.24),
+        l12 = Complex(0.030, -0.020),
+        l21 = Complex(0.028, -0.018),
+        t12 = Complex(0.975, -0.08),
+        t21 = Complex(0.968, -0.10),
+        i12 = Complex(0.0007, 0.0004),
+        i21 = Complex(0.0006, -0.0005),
+    )
+
+    /** The ideal S-matrix `[receiver][source]` seen by the VNA for the current setup. */
+    private fun actualDut(f: Double): Array<Array<Complex>> = when {
+        calKind != null -> onePortStandard(f, calPort, calKind!!)
+        calThru -> thru(f)
+        calIsolation -> Array(2) { Array(2) { Complex.ZERO } }
+        else -> filterDut(f)
     }
 
-    /** Ideal band-pass filter. Index order: S11, S21, S12, S22. */
-    private fun filterDut(f: Double): Array<Complex> {
+    /**
+     * Test hook: the ideal (error-free) S-matrix the current preparation state produces at
+     * [frequency]. Lets the demo-mode integration test compare corrected data against truth.
+     */
+    internal fun idealDutAt(frequency: Double): Array<Array<Complex>> = actualDut(frequency)
+
+    /**
+     * A one-port standard with the other port terminated in a matched load, which is what the
+     * 1-port SOL error model assumes (the full two-port model then reduces to it exactly).
+     */
+    private fun onePortStandard(f: Double, port: Int, kind: CalStandard): Array<Array<Complex>> {
+        val gamma = when (kind) {
+            CalStandard.OPEN -> Complex.ONE
+            CalStandard.SHORT -> Complex(-1.0, 0.0)
+            CalStandard.LOAD -> Complex.ZERO
+        }
+        val matrix = Array(2) { Array(2) { Complex.ZERO } }
+        matrix[port - 1][port - 1] = gamma
+        return matrix
+    }
+
+    private fun thru(f: Double): Array<Array<Complex>> {
+        val loss = 1.0 - 0.002 * (f / 1e9)
+        val transmission = polar(loss, -2 * PI * f * 0.12e-9)
+        return arrayOf(
+            arrayOf(Complex.ZERO, transmission),
+            arrayOf(transmission, Complex.ZERO),
+        )
+    }
+
+    /** Ideal band-pass filter, `[receiver][source]`. */
+    private fun filterDut(f: Double): Array<Array<Complex>> {
         val g = f / 1e9
         val edge = 0.065
         val pass = sigmoid((f - 1.75e9) / (edge * 1e9)) * sigmoid((2.65e9 - f) / (edge * 1e9))
@@ -218,30 +278,13 @@ class DemoVnaSource : VnaSource {
         val phase21 = -2 * PI * f * 1.55e-9 * (0.35 + 0.65 * pass) + 0.06 * sin(g * 7.0)
         val phase11 = PI + 2 * PI * f * 0.24e-9 + 0.55 * sin(2 * PI * f / 1.1e9)
         val s21 = polar(s21mag, phase21)
+        val s11 = polar(s11mag, phase11)
+        val s22 = polar(s11mag * 0.92, phase11 + 0.35)
+        val s12 = s21 * Complex(0.985, -0.04)
         return arrayOf(
-            polar(s11mag, phase11),
-            s21,
-            s21 * Complex(0.985, -0.04),
-            polar(s11mag * 0.92, phase11 + 0.35),
+            arrayOf(s11, s12),
+            arrayOf(s21, s22),
         )
-    }
-
-    private fun standardDut(f: Double, port: Int, kind: CalStandard): Array<Complex> {
-        val gamma = when (kind) {
-            CalStandard.OPEN -> Complex.ONE
-            CalStandard.SHORT -> Complex(-1.0, 0.0)
-            CalStandard.LOAD -> Complex.ZERO
-        }
-        return if (port == 2) {
-            arrayOf(Complex.ZERO, polar(0.0008, 0.0), polar(0.0008, 0.0), gamma)
-        } else {
-            arrayOf(gamma, polar(0.0008, 0.0), polar(0.0008, 0.0), Complex.ZERO)
-        }
-    }
-
-    private fun thruDut(f: Double): Array<Complex> {
-        val loss = 1.0 - 0.002 * (f / 1e9)
-        return arrayOf(Complex.ZERO, polar(loss, -2 * PI * f * 0.12e-9), polar(loss, -2 * PI * f * 0.12e-9), Complex.ZERO)
     }
 
     private fun polar(mag: Double, phase: Double) = Complex(mag * cos(phase), mag * sin(phase))

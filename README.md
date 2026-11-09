@@ -1,8 +1,8 @@
 # DroidVNA
 
-**DroidVNA — LibreVNA / Harogic B60 的原生 Android 触屏客户端** — 通过 USB-C OTG 直接把 VNA 接到平板/手机，不需要 PC、Termux 或共享内核容器。使用 Android USB Host API 直接访问设备的 vendor-specific bulk 端点，按 LibreVNA USB 协议 v14 完成扫描设置、数据接收、校准与导出；同时支持导入电脑版 `.cal`，以及 LibreCAL / Harogic ECB-60 电子校准件的自动 1 端口 SOL + THRU 校准。界面内置 **中文 / English** 两套文案，可在右上角设置中随时切换。
+**DroidVNA — LibreVNA / Harogic B60 的原生 Android 触屏客户端** — 通过 USB-C OTG 直接把 VNA 接到平板/手机，不需要 PC、Termux 或共享内核容器。使用 Android USB Host API 直接访问设备的 vendor-specific bulk 端点，按 LibreVNA USB 协议 v14 完成扫描设置、数据接收、校准与导出；同时支持导入电脑版 `.cal`，以及 LibreCAL / Harogic ECB-60 电子校准件的自动校准；校准引擎支持完整的 12 项双端口 SOLT（含可选隔离测量）。界面内置 **中文 / English** 两套文案，可在右上角设置中随时切换。
 
-**English name:** DroidVNA — a touch-first, native Android USB host client for LibreVNA and Harogic B60 vector network analyzers. It speaks the LibreVNA USB protocol v14 directly (no PC, no Termux), supports 1-port SOL + THRU calibration, LibreVNA-GUI `.cal` import, and LibreCAL / ECB-60 electronic calibration. Licensed under GPL-3.0.
+**English name:** DroidVNA — a touch-first, native Android USB host client for LibreVNA and Harogic B60 vector network analyzers. It speaks the LibreVNA USB protocol v14 directly (no PC, no Termux), supports full 12-term two-port SOLT calibration (with an optional isolation measurement) plus 1-port SOL + THRU, LibreVNA-GUI `.cal` import (rebuilt as a full SOLT when the file allows), and LibreCAL / ECB-60 electronic calibration. Licensed under GPL-3.0.
 
 > **声明**：DroidVNA 不是 LibreVNA 官方 Android 版，也不包含桌面 Qt GUI。它是**基于 [LibreVNA-GUI](https://github.com/jankae/LibreVNA) 的 USB 协议、校准数学与 E-Cal 逻辑改写**的 Android 客户端，按 GPL-3.0 发布；应用名中的 “VNA” 指矢量网络分析仪，“Droid” 指 Android，与 LibreVNA 商标所有者无隶属关系。
 
@@ -30,9 +30,10 @@
 
 ## 项目状态
 
-- 当前版本 **0.6.0**（versionCode 8），要求 Android 8.0（API 26）及以上；compileSdk / targetSdk 36。
-- 仓库内提供预构建的 **release** APK：[dist/DroidVNA-0.6.0-release.apk](dist/DroidVNA-0.6.0-release.apk)，也可以从 GitHub Releases 下载。
+- 当前版本 **0.7.0-beta**（versionCode 9），要求 Android 8.0（API 26）及以上；compileSdk / targetSdk 36。
+- 仓库内提供预构建的 **release** APK：[dist/DroidVNA-0.7.0-beta-release.apk](dist/DroidVNA-0.7.0-beta-release.apk)，也可以从 GitHub Releases 下载。
 - 已在 Xiaomi Pad（Android 17）+ Harogic B60（FW 1.8.6）上完成真机验证；ECB-60（FW 0.3.2）的 USB、系数读取和校准流程已实机跑通，但 0.4.0 及之前的校准结果存在 Smith 杂散，0.4.1 已改为 all-port 标准切换，等待实机复测；LibreVNA 官方硬件尚未上机实测。
+- 完整的 **12 项 SOLT** 已在真机（B60 + ECB-60，FW 0.3.2）上跑通 E-Cal 自动流程并成功应用（401 点 / 500 MHz–3 GHz），隔离勾选框与「未校准频段」提示也已实机验证；但**绝对精度尚未与桌面版 / 已知 DUT 对照**，**手动 SOLT 流程尚未上机**（缺机械校准件），因此本版标记为 **beta**。真机验收方法见下面「测试」一节的建议流程。
 - 变更记录见 [CHANGELOG.md](CHANGELOG.md)，发布流程见 [docs/RELEASING.md](docs/RELEASING.md)。
 
 ## 功能
@@ -45,7 +46,7 @@
 - **可收起的控件行**：迹线选择/模式/Y 轴那一行、以及大屏右侧的采集卡片列都能一键收起（菜单「收起迹线控件」、行尾 `⌃` 按钮、采集卡片上的 `⌃`）。收起后图表更大，标记快捷操作仍保留。
 - **横屏竖排采集栏**：手机横屏时采集控件不再挤在底部，而是作为竖列固定在左侧，图表占据右侧。
 - **设置记忆**：扫描参数、标记位置、迹线参数、图表模式、Y 轴缩放、对数频率轴、水印开关、控件收起状态、界面语言都会自动保存，下次启动原样恢复；「连接后自动连续扫描」可以关掉，改成手动点「开始扫描」。
-- **校准记忆**：SOL / THRU / 电子校准（E-Cal）/ `.cal` 导入的结果会立即保存为一份带设备序列号与来源标记的快照，下次启动自动载入，并在测量页顶部提示「已自动载入上次校准」。可以随时「停用校准」（保留系数）或「忘记已保存的校准」。
+- **校准记忆**：SOLT / SOL / THRU / 电子校准（E-Cal）/ `.cal` 导入的结果会立即保存为一份带设备序列号与来源标记的快照，下次启动自动载入，并在测量页顶部提示「已自动载入上次校准」。可以随时「停用校准」（保留系数）或「忘记已保存的校准」。
 - **中英文界面**：`⋮` →「应用设置」→「界面语言」，可选跟随系统 / 中文 / English，切换立即生效并持久化；关于信息也在同一面板。
 - **Y 轴自动 / 手动**：图表上方的 `Y 自动` 按钮在自动缩放和手动缩放之间切换；在图表上捏合缩放会自动切到手动，点一下即可恢复自动。
 - **触摸优先的图表**：
@@ -57,9 +58,10 @@
 - **标记**：任意添加、拖动、删除；峰值/谷值搜索；双标记 Δ 差值。
 - **扫描设置**：起止频率、点数、IFBW、功率、平均次数、双端口/单端口、对数扫描、自动连续扫描。B60 的 IFBW 可选 **15 Hz – 75 kHz**。
 - **1 端口 SOL 校准**：Open / Short / Load，计算方向性、源匹配和反射跟踪误差，按频率保存并插值应用；可选手动延迟。校准按设备序列号隔离，不会把演示/其他设备的校准套到 B60 上。
-- **THRU 归一化**：对 S21 / S12 做直通响应校准。
-- **电脑 .cal 导入**：读取 LibreVNA-GUI format 3 的 .cal，从桌面版导出的校准文件在移动端重建 1 端口 SOL + THRU 并立即应用；按当前 VNA 序列号保存。
-- **电子校准件（LibreCAL / ECB-60）**：通过 USB SCPI 读取 FACTORY 系数，自动切换 Open/Short/Load/Through，测量后直接应用 1 端口 SOL + THRU；支持温度/稳定状态显示。
+- **完整 12 项 SOLT 双端口校准**：两端 Open / Short / Load + THRU，可选再加一次隔离测量，解出方向性、源匹配、反射跟踪、接收机匹配、传输跟踪与隔离，按多端口公式 `S = B·A⁻¹` 逐点修正。相比 THRU 归一化，它还会扣除端口失配，因此 S21 / S12 在端口反射较大时依然准确。
+- **THRU 归一化**：对 S21 / S12 做直通响应校准（仅 0 dB 归一化，不含失配修正；单端口设备或旧校准仍可用）。
+- **电脑 .cal 导入**：读取 LibreVNA-GUI format 3 的 .cal，在移动端重建校准并立即应用；含两端口的 1 端口测量与 THRU 时直接重建完整 12 项 SOLT（并读取其中的 Isolation），否则退回 1 端口 SOL + THRU；按当前 VNA 序列号保存。
+- **电子校准件（LibreCAL / ECB-60）**：通过 USB SCPI 读取 FACTORY 系数，自动切换 Open/Short/Load/Through；双端口校准件直接解出完整 12 项 SOLT。**隔离测量是可选勾选框（默认关闭）**，因为 ECB-60 这类双端口 E-Cal 的隔离通路较差；可之后用机械 50 Ω 负载单独补测。支持温度/稳定状态显示。
 - **导出**：Touchstone `.s2p` / `.s1p`、CSV，保存到 `Download/DroidVNA`，也可通过系统分享发送。
 - **演示模式**：内置 1.75–2.65 GHz 带通滤波器 DUT 和真实的系统误差模型，没有硬件也能完整走通 SOL 校准与导出。
 - **设备页**：硬件/固件/协议版本、锁定与温度状态、USB 诊断、设备日志。
@@ -105,13 +107,13 @@
 已构建的 release APK（仓库内）：
 
 ```
-dist/DroidVNA-0.6.0-release.apk
-大小: 12,310,687 字节
-SHA-256: 2F0B4948DDBEA4A13A74306F14D9CB0F20A31A95E61BFFA6191E7A088B727175
+dist/DroidVNA-0.7.0-beta-release.apk
+大小: 13,160,344 字节
+SHA-256: 0D05C1087175DFBB93F43BC606D313079F6902E19C15089F39AC35ED6AC069EC
 ```
 
 ```bash
-adb install -r dist/DroidVNA-0.6.0-release.apk
+adb install -r dist/DroidVNA-0.7.0-beta-release.apk
 ```
 
 也可以从仓库的 **Releases** 页面下载同一版本。该 APK 是 release 构建，使用项目发布密钥签署（证书 CN=Houran CHEN）；换用别的 keystore 重新签名后无法覆盖安装，只能先卸载。签名流程见 [docs/RELEASING.md](docs/RELEASING.md)。
@@ -125,7 +127,7 @@ INSTALL_FAILED_USER_RESTRICTED: Install canceled by user
 请使用 shell 安装方式（本机验证可用）：
 
 ```bash
-adb push dist/DroidVNA-0.6.0-release.apk /data/local/tmp/droidvna.apk
+adb push dist/DroidVNA-0.7.0-beta-release.apk /data/local/tmp/droidvna.apk
 adb shell pm install -r -t /data/local/tmp/droidvna.apk
 ```
 
@@ -211,9 +213,9 @@ B60（VNB-60，FW 1.8.6，HW 0xD0）有一个已知的固件行为：连接后�
 1. 在电脑版 LibreVNA-GUI 完成校准（SOL / SOLT / THRU），保存为 `.cal`（format 3）。
 2. 把 `.cal` 拷到平板（USB、网盘、LocalSend 均可）。
 3. 平板先连接 VNA，打开「校准 → .cal 校准文件导入 → 选择 .cal 文件」。
-4. 应用解析 calkit 和测量点，重建 1 端口 SOL + THRU 归一化，并按当前 VNA 序列号保存。
+4. 应用解析 calkit 和测量点，重建校准（数据足够时是完整 12 项 SOLT），并按当前 VNA 序列号保存。
 
-限制：移动端当前只应用 1 端口 SOL + THRU，不使用 `.cal` 中的完整 12 项双端口误差项；如果 `.cal` 记录的是另一台 VNA，界面会提示，精度可能下降。calkit 支持 Touchstone 数据，也支持纯参数化 Open/Short/Load（C/L/Cfirst 等）以及参数化 Through（Z0/delay/loss）。
+限制：若 `.cal` 只包含单端口测量，移动端只能重建 1 端口 SOL + THRU；两端口的 1 端口测量 + THRU 都在时才会重建完整 12 项 SOLT。如果 `.cal` 记录的是另一台 VNA，界面会提示，精度可能下降。calkit 支持 Touchstone 数据，也支持纯参数化 Open/Short/Load（C/L/Cfirst 等）以及参数化 Through（Z0/delay/loss）。
 
 ### 电子校准件 LibreCAL / ECB-60
 
@@ -222,6 +224,9 @@ B60（VNB-60，FW 1.8.6，HW 0xD0）有一个已知的固件行为：连接后�
 3. 选择系数集（通常 `FACTORY`）→「加载系数」，等待进度到 100%。
 4. 固定手动映射 VNA P1 ↔ Cal P1、P2 ↔ Cal P2，**不使用 Auto**；点「开始电子校准」。
 5. 应用会先把**所有用到的 E-Cal 端口设成同一个标准**（Open/Short/Load），再测所有 VNA 端口；THRU 前先全部设回 NONE，再建立 P1→P2 直通；结束把所有 cal 端口设回 NONE。
+6. 双端口校准件会一次性解出**完整 12 项 SOLT**并立即应用；单端口校准件只能得到 1 端口 SOL。
+
+**隔离测量是可选勾选框，默认关闭。** 打开后校准最后会再花约几秒，把所有 cal 端口切到 LOAD 测一次隔离。默认关闭的原因：ECB-60 这类双端口电子校准件的隔离通路本身很差，它测出的串扰往往比用两个机械 50 Ω 负载测的还差；这种情况下更好的做法是先用 E-Cal 完成其余 11 项，之后再用机械负载**单独补测隔离**（见下一节）。
 
 注意：温度未稳定时会等待最多 90 秒；B60 每次切换标准会执行 SA→VNA 复位，整体耗时比桌面版长。端口状态每次都会用 `:PORT?` 校验，系数流必须完整；否则会中止或回退逐点读取，避免截断系数造成“杂散”校准。
 
@@ -234,12 +239,38 @@ B60（VNB-60，FW 1.8.6，HW 0xD0）有一个已知的固件行为：连接后�
 5. 点「计算并应用端口 N SOL」。
 6. 如需修正 S21/S12 响应，把 Port 1 与 Port 2 直连，捕获 THRU 后点「应用 THRU 归一化」。
 
+### 手动完整 SOLT（双端口）
+
+1. 连接设备（双端口）或启动演示模式，先确定扫描频率与点数。
+2. 依次捕获 **端口 1** 的 Open / Short / Load，再捕获 **端口 2** 的 Open / Short / Load（在校准页切换「端口 1 / 端口 2」）。
+3. 用低损耗直通连接 P1 ↔ P2，捕获 **THRU**。若直通件有额外电长度，在「THRU 延迟」里填皮秒值。
+4. 可选：两端各接 50 Ω 负载，捕获 **ISOLATION**，把残余串扰从 S21 / S12 中扣除；跳过则按零隔离处理。
+5. 点「计算并应用完整 SOLT」。
+
+### 单独补测 / 替换隔离项
+
+隔离项可以**在不重做其他测量的前提下单独替换**，无论当前校准来自手动 SOLT、`.cal` 导入还是 E-Cal：
+
+1. 保持当前扫描设置不变，两端各接一个 50 Ω 负载。
+2. 在「双端口 SOLT」分区点 **捕获**（ISOLATION 卡片）。
+3. 点 **「只用本次捕获更新隔离项」**。
+
+原理：传输跟踪是按 `(THRU 实测 S21 − 隔离)` 求出的，所以改了隔离必须重算 T。应用会把 THRU 的实测值与理想值一起保存在校准快照里（`calibration.json` 的 `solt.through`），因此重算的是**精确值**，而不是近似修一下 —— 反射项和 load match 完全不动。也可以用「清除隔离修正」把隔离归零。
+
+LibreVNA 的 `.cal` 格式本身就是**按测量项存储**的（`measurements` 里每项一条，隔离是独立的 `Isolation` 项），所以这种“只换一项测量”的做法与桌面版的数据模型一致；限制只在我们自己的 `calibration.json` 上，而它现在也保存了 THRU 原始数据，因此可以做到精确重算。
+
 实现说明：
 
-- 1 端口误差模型：`Γm = e00 + e01e10·Γa / (1 - e11·Γa)`。用 Open/Short/Load 三组测量解出 e00、e11、e01e10，再按频率插值应用到 S11 或 S22。
-- 标准件默认按理想 Open（Γ=+1）、Short（Γ=-1）、Load（Γ=0）处理，可填写 Open/Short 的偏移延迟（ps）。
-- 校准按频率保存到应用私有目录（`filesDir/calibration.json`），重启后自动载入并自动应用；改变扫描范围后建议重新校准。快照记录设备序列号、来源（手动 SOL / THRU / E-Cal / .cal 导入）和更新时间，在「应用设置 → 校准记忆」里可见，也可一键停用或删除。
-- **不是**完整的 12 项双端口误差修正；.cal 导入和 E-Cal 自动校准同样只使用 1 端口 SOL + THRU 子集，不包含完整的双端口误差项、源/接收机幅度校准和校准套件高阶系数。需要计量级结果请使用桌面版 LibreVNA-GUI。
+- 1 端口误差模型：`Γm = e00 + e01e10·Γa / (1 - e11·Γa)`。用 Open/Short/Load 三组测量解出 e00、e11、e01e10（与 LibreVNA-GUI `computeOSL` 相同的闭式解），再按频率插值应用到 S11 或 S22。
+- 12 项模型：在 1 端口三项之上，用 THRU 测量解出接收机匹配（load match）、传输跟踪与隔离，共 12 项；修正按多端口公式 `S = B·A⁻¹` 逐点进行（复数 2×2 求解使用 Apache Commons Math 的 `FieldLUDecomposition`）。
+- 完整 SOLT 存在时优先于 1 端口 SOL / THRU 归一化应用；两者同时存在不会重复修正。
+- 标准件默认按理想 Open（Γ=+1）、Short（Γ=-1）、Load（Γ=0）、THRU（理想直通）处理，可填写 Open/Short 的偏移延迟和 THRU 延迟（ps）。
+- **手工 SOLT 会校验各次捕获的扫描范围**：Open/Short/Load/THRU/隔离的起止频率必须一致，否则直接拒绝并提示（重采样到更窄网格会把带外点静默钳位到端点值，解出的误差项会错得没有症状）。`.cal` 导入同样要求 THRU 与端口 2 的频段覆盖端口 1，否则不生成完整 SOLT 并给出警告。
+- **标准件过于接近时拒绝求解**：方程为奇异（行列式趋零）或解出的方向性/源匹配幅值超过 10（物理上不可能的量级）都会判为无解，而不是应用一组离谱的系数。注意这只能挡住"数值上爆掉"的情况；把 Open 和 Short 插反这类错误从数据本身无法识别。
+- THRU 归一化保存的是 `实测/理想`（与 `.cal` 导入的语义一致）；THRU 延迟为 0 时理想直通为 1，等同于传统的 0 dB 归一化。
+- 校准按频率保存到应用私有目录（`filesDir/calibration.json`，格式 version 3；旧版本文件仍可载入），重启后自动载入并自动应用。快照记录设备序列号、来源（手动 SOLT / SOL / THRU / E-Cal / .cal 导入）和更新时间，在「应用设置 → 校准记忆」里可见，也可一键停用或删除。
+- **扫描范围超出已校准频段时会提示**：测量页的「校准」卡片和校准页的状态卡都会显示「测量范围覆盖未校准频段」，并给出已校准频段；超出部分按未校准处理（与修正引擎跳过带外点的行为一致）。
+- **仍然不做**源/接收机幅度校准（功率校准）、频率校准和校准套件高阶系数拟合；标准件按理想或导入的 Touchstone / 参数模型处理。需要计量级结果请使用桌面版 LibreVNA-GUI。
 
 ## 导出
 
@@ -300,7 +331,7 @@ cp keystore.properties.example keystore.properties
 
 `keystore.properties`、`*.jks`、`*.keystore` 已在 `.gitignore` 中。请离线备份 keystore 和密码；丢失后无法覆盖升级已安装的应用。完整步骤见 [docs/RELEASING.md](docs/RELEASING.md)。
 
-技术栈：Kotlin 2.4.21、Jetpack Compose（Material 3，BOM 2025.10.01）、AGP 8.13.2、Gradle 8.14.4、compileSdk / targetSdk 36、minSdk 26。没有 native 库，APK 可直接安装到 arm64 / x86_64 设备。
+技术栈：Kotlin 2.4.21、Jetpack Compose（Material 3，BOM 2025.10.01）、AGP 8.13.2、Gradle 8.14.4、compileSdk / targetSdk 36、minSdk 26、Apache Commons Math 3.6.1（12 项 SOLT 的复数矩阵求解）。没有 native 库，APK 可直接安装到 arm64 / x86_64 设备。
 
 持续集成：[.github/workflows/android.yml](.github/workflows/android.yml) 在每次 push / PR 时运行单元测试并构建 debug APK。
 
@@ -322,7 +353,7 @@ android/
     device/
       VnaSource.kt / DemoVnaSource.kt
       VnaRepository.kt           连接、扫描控制、平均、校准应用、持久化
-    model/                       Complex、SweepConfig/Result、SOL/THRU 校准数学、.cal 导入、E-Cal 系数解析
+    model/                       Complex、SweepConfig/Result、SOL 与完整 12 项 SOLT 校准数学（Solt.kt）、复数矩阵适配（ComplexMatrix.kt）、.cal 导入、E-Cal 系数解析
     ui/                          Compose 页面、图表、底部面板、主题
       text/                      中英文文案、翻译 Text 包装、语言状态
       screens/                   测量 / 设备 / 校准页面
@@ -354,8 +385,10 @@ dist/                            预构建 APK
 
 ## 已知限制 / 路线图
 
-- 没有固件更新、手动控制、信号源、频谱分析、完整 12 项双端口校准、幅度/频率校准和 SCPI 服务器。
-- 没有独立的 Touchstone 校准套件文件导入；`.cal` 导入仅重建 1 端口 SOL + THRU，不包含完整 SOLT 误差项。
+- 没有固件更新、手动控制、信号源、频谱分析、幅度/功率校准、频率校准和 SCPI 服务器。
+- 完整 12 项 SOLT 支持双端口（2 端口即全部 12 项）；三端口/四端口设备的扩展未实现。手动 THRU 按理想直通处理，非理想直通请填延迟或改用 E-Cal / `.cal`。
+- 双端口电子校准件（如 ECB-60）的隔离通路较差，E-Cal 自带的隔离测量默认关闭；需要隔离修正时建议用两个机械 50 Ω 负载单独补测（校准页支持只替换隔离项）。
+- 没有独立的 Touchstone 校准套件文件导入；`.cal` 导入可重建完整 SOLT，但单端口 `.cal` 仍只得到 1 端口 SOL + THRU。
 - E-Cal 固定 VNA P1/P2 ↔ Cal P1/P2 映射，不包含自动端口识别；需要带外部供电的 OTG Hub。
 - 图表为自绘 Compose Canvas，极大点数（>1001）未做性能优化。
 - 仓库内预构建 APK 为 release 构建 + 临时自签名证书；正式分发请配置自己的 release keystore 重新构建。
@@ -386,7 +419,7 @@ cd android
 ./gradlew testDebugUnitTest
 ```
 
-21 个 JVM 单元测试覆盖：CRC/帧编解码、SweepSettings 布局、Datapoint 解析、单/双 stage 重组、慢速扫描的增量快照、环形滚动合并、SOL 数学与延迟标准、`.cal` 解析/重建（含纯参数化 calkit）、E-Cal 系数顺序、Touchstone 格式。
+48 个 JVM 单元测试覆盖：CRC/帧编解码、SweepSettings 布局、Datapoint 解析、单/双 stage 重组、慢速扫描的增量快照、环形滚动合并、SOL 数学与延迟标准、完整 12 项 SOLT 的反解 / DUT 往返修正 / 隔离扣除 / 退化标准件拒绝、**正向模型与独立的信号流推导逐点吻合（1e-12）**、校准后标准件回到理想值、隔离项精确替换、已校准频段覆盖判定、演示模式端到端 SOLT、`.cal` 解析/重建（含纯参数化 calkit 与完整 SOLT）、E-Cal 系数顺序、Touchstone 格式。另有一组稳健性测试覆盖：标准件模型在 0 Hz 的极限值、单频点校准被拒绝、被截断的校准快照不会越界、标准件过于接近时拒绝求解、`.cal` 中 THRU 频段未覆盖 SOL 频段时拒绝生成完整 SOLT。
 
 本机手动验证（Xiaomi Pad，Android 17）：
 
@@ -412,12 +445,32 @@ Harogic B60 真机验证（FW 1.8.6 / HW 0xD0，Android 17 平板，无线 adb�
 
 电子校准件 / `.cal` 验证：
 
-- `.cal` 解析与 1 端口 SOL + THRU 重建已由 JVM 单元测试覆盖；并用 VNStudio 导出的真实 `.cal` 验证通过：
+- `.cal` 解析与重建（1 端口 SOL + THRU 和完整 12 项 SOLT 两条路径）已由 JVM 单元测试覆盖；并用 VNStudio 导出的真实 `.cal` 验证通过：
   - `ec_2p_solt_10m6g_5dbm_1khz_...cal`（ECB-60 电子校准件，Touchstone 系数）：2 端口 SOL + THRU，0 警告
   - `default_calbrate_<序列号>.cal`（MCB-60M 手动套件，纯参数化 calkit）：2 端口 SOL + THRU，0 警告
-- LibreCAL / ECB-60 的 USB 权限、IDN、2 端口、温度/稳定、FACTORY 7 组系数加载和自动流程已在 ECB-60（FW 0.3.2，序列号已隐去）上跑通；但 0.4.0 及之前的校准结果在 Smith 图上表现为杂散。0.4.1 已按 LibreVNA-GUI 的 **all-port 标准切换** 修正测量时序，并增加 `:PORT?` 状态校验和系数流完整性校验，待实机复测确认。`.cal` 导入也已在平板上用 VNStudio 文件实测。
+- LibreCAL / ECB-60 的 USB 权限、IDN、2 端口、温度/稳定、FACTORY 7 组系数加载和自动流程已在 ECB-60（FW 0.3.2，序列号已隐去）上跑通；但 0.4.0 及之前的校准结果在 Smith 图上表现为杂散。0.4.1 已按 LibreVNA-GUI 的 **all-port 标准切换** 修正测量时序，并增加 `:PORT?` 状态校验和系数流完整性校验。`.cal` 导入也已在平板上用 VNStudio 文件实测。
+- **0.7.0-beta 的完整 12 项 SOLT 实机结果**（2026-11-10，B60 FW 1.8.6 + ECB-60 FW 0.3.2，Android 17 平板）：
+  - E-Cal 自动流程在 **401 点 / 500 MHz – 3 GHz** 下解算出完整 12 项模型并成功应用；测量页显示
+    `采集中 CAL`，校准卡显示「已应用 · 12 项 SOLT · P1 SOL · P2 SOL」，全程无崩溃。
+  - 隔离勾选框两种设置都跑通：开启 →「电子校准完成：… 含隔离测量」，关闭 →「… 未做隔离测量」（默认关闭）。
+  - 校准后的物理合理性：E-Cal 置 NONE（等效开路）时 S11 ≈ 0 dB（|Γ|≈1）、S21 落在 −80…−100 dB 噪底。
+  - 「测量范围覆盖未校准频段」提示在真机上按预期出现。
+  - **仍未验证**：与桌面版 / 已知 DUT 的幅度相位精度对照；手动 SOLT 全流程（缺机械校准件）。
 
 LibreVNA 官方硬件尚未上机实测；USB 协议路径已由 B60 验证。
+
+### 完整 SOLT 的真机验收建议
+
+`SoltTest` / `DemoVnaSoltTest` 只能证明算法与流程自洽（正向模型与修正互为逆运算）；真实硬件的验证仍需按下面步骤做，基准是**桌面版 LibreVNA-GUI**：
+
+1. 同一台 VNA、同一套标准件、同一扫描设置，在桌面版做一次 2 端口 SOLT（含隔离），导出 `.cal`。
+2. 平板端用同样的标准件重做一次手动 SOLT，或直接导入该 `.cal`。
+3. 接一个**两端反射都明显**的已知器件（例如匹配不良的衰减器或一段回波损耗已知的线），对比三种结果的 S21：
+   未校准 / THRU 归一化 / 完整 SOLT。
+4. 判据：完整 SOLT 的 S21、S11、S22 应与桌面版对同一硬件的同一次测量在噪声内一致；
+   THRU 归一化的 S21 在端口失配较大处应能看到系统性偏差，而 SOLT 不应再有。
+5. 若 S21 出现明显跳变或杂散，优先检查该次 SOLT 是否真的用了正确方向的 THRU 与隔离数据
+   （设备日志里会打印 `12-term SOLT applied (... isolation measured/not measured)`）。
 
 ## 贡献
 
@@ -437,6 +490,7 @@ DroidVNA 的 **UI、图表、触摸交互、USB 权限流程、导出和演示�
 | --- | --- |
 | `usb/Protocol.kt` 帧、CRC、SweepSettings、DeviceInfo、Datapoint | LibreVNA 固件/USB 协议 v14、LibreVNA-GUI 驱动 |
 | `model/Calibration.kt` SOL 误差模型与求解 | LibreVNA-GUI 校准数学 |
+| `model/Solt.kt` 12 项误差模型、`computeOSL`/`computeSOLT` 闭式解、多端口修正 | `Calibration/calibration.cpp`（`Point`、`computeOSL`、`computeSOLT`、`correctMeasurement`） |
 | `model/CalStandardModel.kt` Open/Short/Load/Through 参数模型 | `Calibration/calstandard.cpp`、`Util::addTransmissionLine` |
 | `model/CalibrationFileImporter.kt` `.cal` format 3 | LibreVNA-GUI 校准文件格式 |
 | `usb/EcalDevice.kt`、`model/EcalCoefficients.kt` E-Cal SCPI 与流程 | `Calibration/LibreCAL/caldevice.cpp`、`librecaldialog.cpp` |

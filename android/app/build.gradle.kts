@@ -105,8 +105,8 @@ android {
         applicationId = "com.droidvna.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 8
-        versionName = "0.6.0"
+        versionCode = 9
+        versionName = "0.7.0-beta"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
     }
@@ -153,6 +153,9 @@ dependencies {
     implementation("androidx.compose.material:material-icons-core")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
+    // Complex linear algebra for the 12-term SOLT correction. The complex 2x2 solve
+    // (S = B * A^-1) is done with FieldLUDecomposition instead of hand-written code.
+    implementation("org.apache.commons:commons-math3:3.6.1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 

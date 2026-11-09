@@ -121,7 +121,7 @@ fun AppSettingsSheet(vm: MainViewModel) {
             SectionCard(title = "校准记忆") {
                 SettingToggleRow(
                     title = "自动保存并载入上次校准",
-                    subtitle = "SOL / THRU 与电子校准（E-Cal）的结果会立即保存到应用私有目录，下次启动自动载入。",
+                    subtitle = "SOL / SOLT / THRU 与电子校准（E-Cal）的结果会立即保存到应用私有目录，下次启动自动载入。",
                     checked = rememberCal,
                 ) { vm.setRememberCalibration(it) }
                 Spacer(Modifier.height(6.dp))
@@ -130,6 +130,12 @@ fun AppSettingsSheet(vm: MainViewModel) {
                     Text("暂无保存的校准。", color = VnaTextMuted, fontSize = 11.5.sp)
                 } else {
                     val parts = ArrayList<String>()
+                    saved.calibration.solt?.let { solt ->
+                        parts.add(
+                            "12 项 SOLT " + solt.size + " 点" +
+                                (if (solt.hasIsolation) "（含隔离）" else "（无隔离）")
+                        )
+                    }
                     if (saved.calibration.sol.isNotEmpty()) {
                         parts.add("SOL 端口 " + saved.calibration.sol.joinToString(",") { it.port.toString() })
                     }
@@ -139,6 +145,7 @@ fun AppSettingsSheet(vm: MainViewModel) {
                     val origin = when (saved.source) {
                         "ECAL" -> "电子校准"
                         "IMPORT" -> ".cal 导入"
+                        "SOLT" -> "手动 SOLT"
                         "SOL" -> "手动 SOL"
                         "THRU" -> "手动 THRU"
                         else -> "混合"

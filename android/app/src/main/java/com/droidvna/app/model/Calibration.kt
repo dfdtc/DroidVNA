@@ -37,8 +37,13 @@ data class CalibrationSet(
     val thrus: List<ThruCal> = emptyList(),
     /** Serial (or demo id) of the device this calibration was measured on. */
     val sourceKey: String = "",
+    /**
+     * Full 12-term two-port correction. When present it takes precedence over [sol] and [thrus]:
+     * applying a 1-port SOL on top of a 12-term model would correct the reflections twice.
+     */
+    val solt: SoltCal? = null,
 ) {
-    val isEmpty: Boolean get() = sol.isEmpty() && thrus.isEmpty()
+    val isEmpty: Boolean get() = sol.isEmpty() && thrus.isEmpty() && solt == null
 
     fun solFor(port: Int): SolCal? = sol.firstOrNull { it.port == port }
     fun thruFor(from: Int, to: Int): ThruCal? = thrus.firstOrNull { it.fromPort == from && it.toPort == to }
@@ -46,12 +51,58 @@ data class CalibrationSet(
     fun withSol(cal: SolCal): CalibrationSet = copy(sol = sol.filter { it.port != cal.port } + cal)
     fun withThru(cal: ThruCal): CalibrationSet =
         copy(thrus = thrus.filterNot { it.fromPort == cal.fromPort && it.toPort == cal.toPort } + cal)
+
+    fun withSolt(cal: SoltCal): CalibrationSet = copy(solt = cal)
+    fun withoutSolt(): CalibrationSet = copy(solt = null)
+
+    /**
+     * The frequency band in which every correction that will actually be applied is defined.
+     *
+     * A sweep point outside this band is left uncorrected (the engine skips it), so the UI uses
+     * this to tell the user when the sweep reaches beyond the calibration. The 12-term model
+     * wins over the 1-port subset, matching [CalibrationEngine.apply]. For the legacy subset the
+     * *intersection* is reported, because that is the band where all of its pieces apply.
+     */
+    fun calibratedRange(): FreqRange? {
+        solt?.let { cal ->
+            if (cal.size < 2) return null
+            return FreqRange(cal.freqHz.first(), cal.freqHz.last())
+        }
+        var start = Long.MIN_VALUE
+        var end = Long.MAX_VALUE
+        var found = false
+        for (cal in sol) {
+            if (cal.size < 2) continue
+            found = true
+            start = maxOf(start, cal.freqHz.first())
+            end = minOf(end, cal.freqHz.last())
+        }
+        for (cal in thrus) {
+            if (cal.freqHz.size < 2) continue
+            found = true
+            start = maxOf(start, cal.freqHz.first())
+            end = minOf(end, cal.freqHz.last())
+        }
+        if (!found || start >= end) return null
+        return FreqRange(start, end)
+    }
+}
+
+/** An inclusive frequency interval in Hz. */
+data class FreqRange(val startHz: Long, val endHz: Long) {
+    /** True when the sweep interval is fully inside this calibrated band. */
+    fun covers(start: Long, stop: Long): Boolean {
+        val lo = minOf(start, stop)
+        val hi = maxOf(start, stop)
+        return lo >= startHz && hi <= endHz
+    }
 }
 
 /** Complex interpolation over a calibration frequency grid. */
 object CalMath {
     fun interpolate(freq: LongArray, values: Array<Complex>, f: Double): Complex {
         if (freq.isEmpty() || values.isEmpty()) return Complex.NAN
+        if (values.size != freq.size) return Complex.NAN
         if (freq.size == 1 || f <= freq[0]) return values[0]
         if (f >= freq[freq.size - 1]) return values[values.size - 1]
         var lo = 0
@@ -86,8 +137,8 @@ object CalMath {
     }
 
     /**
-     * Solves for e00, e11 and e01e10 from three measured standards using the linear form
-     * Gamma_m = e00 + B*Gamma_a + e11*Gamma_m*Gamma_a, with B = e01e10 - e00*e11.
+     * Solves for e00, e11 and e01e10 from three measured standards, using the ideal
+     * Open (+1) / Short (-1) / Load (0) definitions with optional port delays.
      */
     fun solveSol(
         freqHz: LongArray,
@@ -105,9 +156,9 @@ object CalMath {
     }
 
     /**
-     * SOL solver with arbitrary, frequency-dependent standard definitions. This is used both by
-     * the E-Cal workflow and by imported LibreVNA-GUI .cal files, where Open/Short/Load are not
-     * ideal and may have individual loss/delay/parasitic responses.
+     * SOL solver with arbitrary, frequency-dependent standard definitions. Used by the 1-port
+     * workflow, by the E-Cal workflow and by imported LibreVNA-GUI .cal files, where
+     * Open/Short/Load are not ideal and may have individual loss/delay/parasitic responses.
      */
     fun solveSol(
         freqHz: LongArray,
@@ -120,85 +171,38 @@ object CalMath {
         port: Int = 1,
     ): SolCal? {
         if (freqHz.isEmpty()) return null
-        if (open.size != freqHz.size || short.size != freqHz.size || load.size != freqHz.size ||
-            openActual.size != freqHz.size || shortActual.size != freqHz.size || loadActual.size != freqHz.size
-        ) {
-            return null
-        }
-        val e00 = arrayOfNulls<Complex>(freqHz.size)
-        val e11 = arrayOfNulls<Complex>(freqHz.size)
-        val prod = arrayOfNulls<Complex>(freqHz.size)
-        for (i in freqHz.indices) {
-            val ga = arrayOf(openActual[i], shortActual[i], loadActual[i])
-            val gm = arrayOf(open[i], short[i], load[i])
-            if (ga.any { !it.isFinite() } || gm.any { !it.isFinite() }) return null
-            // 6x7 augmented matrix: unknowns are Re/Im of e00, B and e11.
-            val aug = Array(6) { DoubleArray(7) }
-            for (r in 0 until 3) {
-                val g = ga[r]
-                val m = gm[r]
-                aug[2 * r][0] = 1.0
-                aug[2 * r][2] = g.re
-                aug[2 * r][4] = (m * g).re
-                aug[2 * r][6] = m.re
-
-                aug[2 * r + 1][1] = 1.0
-                aug[2 * r + 1][3] = g.re
-                aug[2 * r + 1][5] = (m * g).re
-                aug[2 * r + 1][6] = m.im
-
-                aug[2 * r][1] = 0.0
-                aug[2 * r][3] = -g.im
-                aug[2 * r][5] = -(m * g).im
-                aug[2 * r + 1][0] = 0.0
-                aug[2 * r + 1][2] = g.im
-                aug[2 * r + 1][4] = (m * g).im
-            }
-            val solution = solveReal(aug) ?: return null
-            val a0 = Complex(solution[0], solution[1])
-            val c = Complex(solution[4], solution[5])
-            val b = Complex(solution[2], solution[3])
-            e00[i] = a0
-            e11[i] = c
-            prod[i] = b + a0 * c
-        }
-        @Suppress("UNCHECKED_CAST")
+        val terms = SoltMath.portTerms(open, short, load, openActual, shortActual, loadActual) ?: return null
+        if (terms.size != freqHz.size) return null
         return SolCal(
             port = port,
             freqHz = freqHz.copyOf(),
-            e00 = e00 as Array<Complex>,
-            e11 = e11 as Array<Complex>,
-            e01e10 = prod as Array<Complex>,
+            e00 = terms.directivity,
+            e11 = terms.sourceMatch,
+            e01e10 = terms.reflectionTracking,
         )
-    }
-
-    private fun solveReal(aug: Array<DoubleArray>): DoubleArray? {
-        val n = 6
-        for (col in 0 until n) {
-            var pivot = col
-            for (row in col + 1 until n) if (kotlin.math.abs(aug[row][col]) > kotlin.math.abs(aug[pivot][col])) pivot = row
-            if (kotlin.math.abs(aug[pivot][col]) < 1e-14) return null
-            if (pivot != col) {
-                val tmp = aug[col]; aug[col] = aug[pivot]; aug[pivot] = tmp
-            }
-            val p = aug[col][col]
-            for (j in col..n) aug[col][j] /= p
-            for (row in 0 until n) {
-                if (row == col) continue
-                val factor = aug[row][col]
-                if (factor == 0.0) continue
-                for (j in col..n) aug[row][j] -= factor * aug[col][j]
-            }
-        }
-        return DoubleArray(n) { aug[it][n] }
     }
 
     enum class SolStandard { OPEN, SHORT, LOAD }
 }
 
 object CalibrationEngine {
+    /**
+     * Applies the active calibration. A full 12-term SOLT model wins over the 1-port SOL +
+     * THRU normalization subset, because both would otherwise correct the same reflections.
+     */
     fun apply(raw: SweepResult, cal: CalibrationSet): SweepResult {
         if (cal.isEmpty) return raw
+        val solt = cal.solt
+        if (solt != null) {
+            val corrected = SoltMath.correct(raw, solt)
+            if (corrected != null) return corrected
+            // Fall through to the 1-port subset only when the 12-term model could not be
+            // applied at all (for example a sweep completely outside its frequency range).
+        }
+        return applyLegacy(raw, cal)
+    }
+
+    private fun applyLegacy(raw: SweepResult, cal: CalibrationSet): SweepResult {
         val n = raw.size
         val s11 = raw.s11.copyOf()
         val s21 = raw.s21.copyOf()

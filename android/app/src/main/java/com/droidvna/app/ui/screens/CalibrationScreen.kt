@@ -63,12 +63,14 @@ import com.droidvna.app.device.ConnectionState
 import com.droidvna.app.model.CalStandard
 import com.droidvna.app.model.CalibrationSet
 import com.droidvna.app.model.SweepResult
+import com.droidvna.app.model.formatFrequency
 import com.droidvna.app.ui.chart.color
 import com.droidvna.app.ui.components.ChoiceChip
 import com.droidvna.app.ui.components.GoodGreen
 import com.droidvna.app.ui.components.OutlineButton
 import com.droidvna.app.ui.components.SectionCard
 import com.droidvna.app.ui.components.SectionLabel
+import com.droidvna.app.ui.components.SettingToggleRow
 import com.droidvna.app.ui.theme.VnaError
 import com.droidvna.app.ui.theme.VnaOutline
 import com.droidvna.app.ui.theme.VnaPrimary
@@ -96,6 +98,7 @@ fun CalibrationScreen(vm: MainViewModel) {
     val connection by vm.repo.connection.collectAsStateWithLifecycle()
     val openDelay by vm.calOpenDelayPs.collectAsStateWithLifecycle()
     val shortDelay by vm.calShortDelayPs.collectAsStateWithLifecycle()
+    val thruDelay by vm.calThruDelayPs.collectAsStateWithLifecycle()
     val ecalConnected by vm.ecalConnected.collectAsStateWithLifecycle()
     val ecalInfo by vm.ecalInfo.collectAsStateWithLifecycle()
     val ecalSets by vm.ecalCoefficientSets.collectAsStateWithLifecycle()
@@ -105,6 +108,7 @@ fun CalibrationScreen(vm: MainViewModel) {
     val ecalProgress by vm.ecalProgress.collectAsStateWithLifecycle()
     val ecalMessage by vm.ecalMessage.collectAsStateWithLifecycle()
     val ecalAvailable by vm.ecalAvailable.collectAsStateWithLifecycle()
+    val ecalUseIsolation by vm.ecalUseIsolation.collectAsStateWithLifecycle()
     val savedCal by vm.savedCalibration.collectAsStateWithLifecycle()
     val calEnabled by vm.calibrationEnabled.collectAsStateWithLifecycle()
     val rememberCal by vm.rememberCalibration.collectAsStateWithLifecycle()
@@ -134,14 +138,14 @@ fun CalibrationScreen(vm: MainViewModel) {
         item {
             SectionCard(title = ".cal 校准文件导入") {
                 Text(
-                    "导入电脑版 LibreVNA-GUI 导出的 .cal（format 3）。移动端会重建 .cal 中 Open/Short/Load/Through 的测量结果：1 端口 SOL + THRU 归一化会立即生效，并按当前设备序列号保存。",
+                    "导入电脑版 LibreVNA-GUI 导出的 .cal（format 3）。移动端会重建 .cal 中 Open/Short/Load/Through 的测量结果：含有两端口的 1 端口测量和 THRU 时，直接重建完整 12 项双端口 SOLT 误差模型；否则退回 1 端口 SOL + THRU 归一化。",
                     color = VnaTextMuted,
                     fontSize = 11.5.sp,
                     lineHeight = 17.sp,
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "注意：移动端当前不做完整 12 项双端口 SOLT 误差修正；.cal 中的 2 端口校准会被折算为上述可用部分。",
+                    "注意：.cal 中的隔离（Isolation）测量会一并读取；缺少时按零隔离处理。",
                     color = VnaSecondary,
                     fontSize = 10.5.sp,
                     lineHeight = 15.sp,
@@ -181,6 +185,13 @@ fun CalibrationScreen(vm: MainViewModel) {
                     color = VnaSecondary,
                     fontSize = 11.sp,
                     lineHeight = 16.sp,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "双端口校准件会先完成两端 Open/Short/Load，再测 THRU，最后把两端都切到 LOAD 测一次隔离，然后解出完整 12 项误差模型。",
+                    color = VnaTextMuted,
+                    fontSize = 10.5.sp,
+                    lineHeight = 15.sp,
                 )
                 Spacer(Modifier.height(10.dp))
                 if (!ecalConnected) {
@@ -242,6 +253,17 @@ fun CalibrationScreen(vm: MainViewModel) {
                         }
                         Spacer(Modifier.height(8.dp))
                     }
+                    Spacer(Modifier.height(8.dp))
+                    SettingToggleRow(
+                        title = "让电子校准件同时测隔离",
+                        subtitle = if (ecalUseIsolation) {
+                            "已开启：校准最后会把两端切到 LOAD 测一次隔离（多花约几秒）"
+                        } else {
+                            "默认关闭：ECB-60 等双端口校准件的隔离通路较差，建议之后用机械 50 Ω 负载单独补测"
+                        },
+                        checked = ecalUseIsolation,
+                    ) { vm.ecalUseIsolation.value = it }
+                    Spacer(Modifier.height(6.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(
                             onClick = vm::loadEcalCoefficients,
@@ -291,7 +313,7 @@ fun CalibrationScreen(vm: MainViewModel) {
                     )
                 }
                 Text(
-                    "提示：B60 每次切换标准会执行 SA→VNA 复位，单步约多 1 秒；整个 2 端口 SOLT 通常需要 10–20 秒。",
+                    "提示：B60 每次切换标准会执行 SA→VNA 复位，单步约多 1 秒；完整 2 端口 SOLT（含隔离）通常需要 15–25 秒。",
                     color = VnaTextMuted,
                     fontSize = 10.sp,
                     modifier = Modifier.padding(top = 8.dp),
@@ -429,12 +451,20 @@ fun CalibrationScreen(vm: MainViewModel) {
         }
 
         item {
-            SectionCard(title = "THRU 归一化") {
+            SectionCard(title = "THRU 归一化（仅传输）") {
                 Text(
-                    "将 Port 1 与 Port 2 直连后捕获一次 THRU，可消除 S21 / S12 的跟踪误差（0 dB 归一化）。",
+                    "将 Port 1 与 Port 2 直连后捕获一次 THRU，按「实测 / 理想」归一化 S21 / S12：消除跟踪误差，但不扣除端口失配。",
                     color = VnaTextMuted,
                     fontSize = 11.5.sp,
                     lineHeight = 17.sp,
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "THRU 延迟为 0 时理想直通为 1，即传统 0 dB 归一化；填了延迟就会把相位一并计入。" +
+                        "同一次捕获也会用于下面的完整 SOLT，不需要重复测量。",
+                    color = VnaSecondary,
+                    fontSize = 10.5.sp,
+                    lineHeight = 15.sp,
                 )
                 Spacer(Modifier.height(10.dp))
                 ThruCaptureCard(
@@ -453,6 +483,105 @@ fun CalibrationScreen(vm: MainViewModel) {
                 }
                 if (message != null && message!!.contains("THRU")) {
                     Text(message!!, color = GoodGreen, fontSize = 11.5.sp, modifier = Modifier.padding(top = 6.dp))
+                }
+            }
+        }
+
+        item {
+            SectionCard(title = "双端口 SOLT · 完整 12 项误差修正") {
+                Text(
+                    "同时解出方向性、源匹配、反射跟踪、接收机匹配、传输跟踪与隔离。相比 1 端口 SOL + THRU 归一化，它还会扣除端口失配，因此 S21 / S12 在端口反射较大时依然准确。",
+                    color = VnaTextMuted,
+                    fontSize = 11.5.sp,
+                    lineHeight = 17.sp,
+                )
+                Spacer(Modifier.height(10.dp))
+                SoltRequirement("端口 1 · Open / Short / Load", draft.p1.keys.containsAll(CalStandard.entries.toList()))
+                SoltRequirement("端口 2 · Open / Short / Load", draft.p2.keys.containsAll(CalStandard.entries.toList()))
+                SoltRequirement("THRU（P1 ↔ P2 直连）", draft.thru != null)
+                SoltRequirement("隔离（可选，两端接 50 Ω 负载）", draft.isolation != null, optional = true)
+                Spacer(Modifier.height(10.dp))
+                IsolationCaptureCard(
+                    captured = draft.isolation,
+                    busy = busy,
+                    onCapture = vm::captureIsolation,
+                )
+                val currentSolt = calibration.solt
+                if (currentSolt != null) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "隔离项可以单独替换：其余误差项和 THRU 原始数据都会保留，" +
+                            "不需要重做 Open / Short / Load。E-Cal 校准的结果同样适用。",
+                        color = VnaTextMuted,
+                        fontSize = 10.5.sp,
+                        lineHeight = 15.sp,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(
+                            onClick = vm::applyIsolationOnly,
+                            enabled = draft.isolation != null && !busy,
+                        ) {
+                            Text(
+                                "只用本次捕获更新隔离项",
+                                color = if (draft.isolation != null) VnaSecondary else VnaTextMuted,
+                                fontSize = 11.5.sp,
+                            )
+                        }
+                        if (currentSolt.hasIsolation) {
+                            TextButton(onClick = vm::clearIsolationTerms, enabled = !busy) {
+                                Text("清除隔离修正", color = VnaTextMuted, fontSize = 11.5.sp)
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = thruDelay,
+                    onValueChange = { vm.calThruDelayPs.value = it },
+                    label = { Text("THRU 延迟（可选）") },
+                    suffix = { Text("ps") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(10.dp))
+                Button(
+                    onClick = vm::computeSolt,
+                    enabled = draft.canSolveSolt && !busy && (info?.numPorts ?: 1) >= 2,
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = VnaPrimary,
+                        contentColor = Color(0xFF00201C),
+                        disabledContainerColor = VnaSurfaceElevated,
+                        disabledContentColor = VnaTextMuted,
+                    ),
+                    modifier = Modifier.fillMaxWidth().height(50.dp),
+                ) {
+                    Text("计算并应用完整 SOLT", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                }
+                if ((info?.numPorts ?: 1) < 2) {
+                    Text(
+                        "完整 SOLT 需要双端口 VNA；单端口设备请使用上面的 1 端口 SOL。",
+                        color = VnaError,
+                        fontSize = 11.sp,
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
+                } else if (!draft.canSolveSolt) {
+                    Text(
+                        "还需要补齐上面的标准件测量才能计算。",
+                        color = VnaTextMuted,
+                        fontSize = 10.5.sp,
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
+                }
+                if (message != null && message!!.contains("SOLT")) {
+                    val failed = message!!.contains("无解") || message!!.contains("需要")
+                    Text(
+                        message!!,
+                        color = if (failed) VnaError else GoodGreen,
+                        fontSize = 11.5.sp,
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
                 }
             }
         }
@@ -496,11 +625,34 @@ fun CalibrationScreen(vm: MainViewModel) {
                     fontSize = 10.5.sp,
                 )
                 Spacer(Modifier.height(4.dp))
-                Text(
-                    "校准按频率插值；大幅改变扫描范围后建议重新校准。",
-                    color = VnaTextMuted,
-                    fontSize = 10.5.sp,
-                )
+                val range = calibration.calibratedRange()
+                if (range != null) {
+                    val covered = range.covers(config.startHz, config.stopHz)
+                    Text(
+                        "已校准频段 " + formatFrequency(range.startHz.toDouble(), 3) + " – " +
+                            formatFrequency(range.endHz.toDouble(), 3),
+                        color = if (covered) GoodGreen else VnaSecondary,
+                        fontSize = 10.5.sp,
+                    )
+                    if (!covered) {
+                        Text(
+                            "当前扫描范围覆盖未校准频段（" +
+                                formatFrequency(config.startHz.toDouble(), 3) + " – " +
+                                formatFrequency(config.stopHz.toDouble(), 3) +
+                                "），超出部分按未校准处理；建议重做校准或缩小扫描范围。",
+                            color = VnaSecondary,
+                            fontSize = 10.5.sp,
+                            lineHeight = 15.sp,
+                            modifier = Modifier.padding(top = 2.dp),
+                        )
+                    }
+                } else {
+                    Text(
+                        "校准按频率插值；大幅改变扫描范围后建议重新校准。",
+                        color = VnaTextMuted,
+                        fontSize = 10.5.sp,
+                    )
+                }
             }
         }
 
@@ -693,8 +845,80 @@ private fun ThruMiniTrace(captured: SweepResult, modifier: Modifier) {
 }
 
 @Composable
+private fun SoltRequirement(label: String, done: Boolean, optional: Boolean = false) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 2.dp)) {
+        Box(
+            Modifier
+                .size(8.dp)
+                .background(if (done) GoodGreen else VnaOutline, CircleShape)
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(label, color = if (done) VnaText else VnaTextMuted, fontSize = 11.5.sp)
+        if (optional) {
+            Spacer(Modifier.width(6.dp))
+            Text(if (done) "已测" else "可跳过", color = VnaTextMuted, fontSize = 10.sp)
+        }
+    }
+}
+
+@Composable
+private fun IsolationCaptureCard(captured: SweepResult?, busy: Boolean, onCapture: () -> Unit) {
+    SurfaceCard(borderColor = if (captured != null) GoodGreen.copy(alpha = 0.45f) else VnaOutline) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "ISOLATION",
+                        color = VnaText,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp,
+                    )
+                    if (captured != null) {
+                        Spacer(Modifier.width(8.dp))
+                        IconCheck()
+                    }
+                }
+                Text("两端都接 50 Ω 负载，测量剩余串扰", color = VnaTextMuted, fontSize = 11.sp)
+                if (captured != null) {
+                    Text("已捕获 " + captured.size + " 点", color = GoodGreen, fontSize = 10.sp)
+                }
+            }
+            Button(
+                onClick = onCapture,
+                enabled = !busy,
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (captured == null) VnaPrimary else VnaSurfaceElevated,
+                    contentColor = if (captured == null) Color(0xFF00201C) else VnaText,
+                ),
+            ) { Text(if (captured == null) "捕获" else "重测", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+        }
+        if (captured != null) {
+            Spacer(Modifier.height(8.dp))
+            ThruMiniTrace(captured, Modifier.fillMaxWidth().height(52.dp))
+        }
+    }
+}
+
+@Composable
 private fun CalibrationChips(calibration: CalibrationSet, vm: MainViewModel) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        calibration.solt?.let { solt ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("12 项 SOLT", color = GoodGreen, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    solt.size.toString() + " 点 · " + if (solt.hasIsolation) "含隔离" else "无隔离",
+                    color = VnaTextMuted,
+                    fontSize = 10.5.sp,
+                )
+                Spacer(Modifier.weight(1f))
+                TextButton(onClick = { vm.repo.clearSolt() }) {
+                    Text("删除", color = VnaTextMuted, fontSize = 10.5.sp)
+                }
+            }
+        }
         for (cal in calibration.sol) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("端口 " + cal.port + " SOL", color = GoodGreen, fontSize = 12.sp, fontWeight = FontWeight.Medium)

@@ -29,6 +29,10 @@ interface VnaSource {
 
     /** Demo mode can fake the standard connected to a port; USB mode ignores this. */
     suspend fun prepareCalStandard(port: Int, kind: CalStandard) {}
+
+    /** Both ports terminated in a matched load, used for the optional isolation measurement. */
+    suspend fun prepareCalIsolation() {}
+
     suspend fun prepareCalThru() {}
     suspend fun clearCalPreparation() {}
 }

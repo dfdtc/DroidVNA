@@ -98,7 +98,7 @@ fun DroidVnaApp(vm: MainViewModel) {
                             Text(
                                 text = when (screen) {
                                     AppScreen.DEVICE -> "USB / 状态 / 诊断"
-                                    else -> "1-PORT SOL + THRU"
+                                    else -> "SOL / SOLT / THRU / E-CAL"
                                 },
                                 fontSize = 8.5.sp,
                                 color = VnaTextMuted,

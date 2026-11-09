@@ -12,11 +12,15 @@ import com.droidvna.app.data.CalibrationStore
 import com.droidvna.app.data.StoredCalibration
 import com.droidvna.app.model.CalMath
 import com.droidvna.app.model.CalStandard
+import com.droidvna.app.model.CalStandardModel
 import com.droidvna.app.model.CalibrationEngine
 import com.droidvna.app.model.CalibrationSet
 import com.droidvna.app.model.Complex
+import com.droidvna.app.model.IsolationMeasurement
 import com.droidvna.app.model.SParam
 import com.droidvna.app.model.SolCal
+import com.droidvna.app.model.SoltCal
+import com.droidvna.app.model.SoltMath
 import com.droidvna.app.model.SweepConfig
 import com.droidvna.app.model.SweepMerge
 import com.droidvna.app.model.SweepResult
@@ -120,7 +124,9 @@ class VnaRepository(
             restoredCalibration = storedCalibration
             addLog(
                 "Restored calibration from " + storedCalibration.updatedAt.ifBlank { "previous run" } +
-                    " (" + calibration.value.sol.size + " SOL, " + (calibration.value.thrus.size / 2) + " THRU)"
+                    " (" + calibration.value.sol.size + " SOL, " +
+                    (calibration.value.thrus.size / 2) + " THRU, " +
+                    (if (calibration.value.solt != null) "12-term SOLT" else "no SOLT") + ")"
             )
         }
         scope.launch {
@@ -633,6 +639,34 @@ class VnaRepository(
         }
     }
 
+    /**
+     * Optional isolation measurement: both ports terminated in a matched load. What is left on
+     * S21/S12 is the crosstalk floor, which the 12-term model subtracts from every transmission
+     * measurement. Without it the isolation terms are treated as zero.
+     */
+    suspend fun captureIsolation(): SweepResult? {
+        val src = source ?: return null
+        if (!config.value.twoPort) {
+            val cfg = config.value.copy(twoPort = true, continuous = true)
+            config.value = cfg
+            controlMutex.withLock { src.start(cfg, standby = false) }
+            running.value = true
+            delay(250)
+        }
+        if (!running.value) {
+            controlMutex.withLock { src.start(config.value.copy(continuous = true), standby = false) }
+            running.value = true
+            delay(200)
+        }
+        src.prepareCalIsolation()
+        addLog("Capturing isolation (both ports terminated)…")
+        return try {
+            captureSettledSweep()
+        } finally {
+            src.clearCalPreparation()
+        }
+    }
+
     fun applySol(
         port: Int,
         open: SweepResult,
@@ -654,21 +688,109 @@ class VnaRepository(
             shortDelayPs = shortDelayPs,
         ) ?: return "标准件过于相似，无法计算 SOL（检查连接）"
         val withPort = cal.copy(port = port)
-        val set = calibration.value.withSol(withPort)
+        // Switching back to the 1-port subset: a full 12-term model would otherwise keep
+        // winning and the user's action would appear to do nothing.
+        val set = calibration.value.withSol(withPort).withoutSolt()
         setCalibration(set)
         addLog("SOL calibration applied to port " + port)
         return null
     }
 
-    fun applyThru(raw: SweepResult): String? {
+    /**
+     * Stores THRU normalization coefficients as `measured / ideal`, the same convention the
+     * `.cal` importer uses, so a calibration built from either source means the same thing.
+     *
+     * With the default [thruDelayPs] of 0 the ideal through is exactly 1, which makes this
+     * identical to the previous "divide by the measured through" behaviour.
+     */
+    fun applyThru(raw: SweepResult, thruDelayPs: Double = 0.0): String? {
         val hasS21 = raw.s21.all { it.isFinite() }
         val hasS12 = raw.s12.all { it.isFinite() }
         if (!hasS21 && !hasS12) return "THRU 数据无效（需要双端口扫描）"
-        var set = calibration.value
-        if (hasS21) set = set.withThru(ThruCal(1, 2, raw.freqHz.copyOf(), raw.s21.copyOf()))
-        if (hasS12) set = set.withThru(ThruCal(2, 1, raw.freqHz.copyOf(), raw.s12.copyOf()))
+        val model = CalStandardModel.Through(z0 = 50.0, delayPs = thruDelayPs, loss = 0.0)
+
+        fun normalize(values: Array<Complex>, ideal: (Double) -> Complex): Array<Complex> =
+            Array(values.size) { i ->
+                val a = ideal(raw.freqHz[i].toDouble())
+                val m = values[i]
+                if (a.isFinite() && a.abs() > 1e-12 && m.isFinite()) m / a else m
+            }
+
+        var set = calibration.value.withoutSolt()
+        if (hasS21) {
+            set = set.withThru(ThruCal(1, 2, raw.freqHz.copyOf(), normalize(raw.s21) { model.s21At(it) }))
+        }
+        if (hasS12) {
+            set = set.withThru(ThruCal(2, 1, raw.freqHz.copyOf(), normalize(raw.s12) { model.s12At(it) }))
+        }
         setCalibration(set)
         addLog("THRU normalization applied")
+        return null
+    }
+
+    /** Applies the full 12-term solution; this supersedes the 1-port SOL / THRU subset. */
+    fun applySolt(cal: SoltCal): String? {
+        if (cal.size < 2) return "SOLT 校准点数不足，请增大扫描点数后重做"
+        setCalibration(calibration.value.withSolt(cal), source = "SOLT")
+        addLog(
+            "12-term SOLT applied (" + cal.size + " points, isolation " +
+                (if (cal.hasIsolation) "measured" else "not measured") + ")"
+        )
+        return null
+    }
+
+    private fun resampleOnto(freqHz: LongArray, values: Array<Complex>, grid: LongArray): Array<Complex> =
+        if (freqHz.size == grid.size && freqHz.contentEquals(grid)) {
+            values.copyOf()
+        } else {
+            Array(grid.size) { i -> CalMath.interpolate(freqHz, values, grid[i].toDouble()) }
+        }
+
+    /**
+     * Replaces only the isolation terms of the current 12-term calibration, for example after
+     * measuring crosstalk with mechanical loads on both ports.
+     *
+     * This is exact rather than approximate: the transmission tracking is derived from
+     * `(through S21 - isolation)`, so [SoltMath.replaceIsolation] recomputes it from the raw
+     * through measurement that is stored with the calibration. Open/Short/Load and the through
+     * do not have to be measured again.
+     */
+    fun applyIsolation(raw: SweepResult): String? {
+        val current = calibration.value.solt
+            ?: return "需要先完成完整 SOLT 校准，才能单独更新隔离"
+        if (current.through == null) {
+            return "这份校准没有保存 THRU 原始数据，无法单独更新隔离，请重做 SOLT"
+        }
+        if (!raw.s21.all { it.isFinite() } && !raw.s12.all { it.isFinite() }) {
+            return "隔离数据无效（需要双端口扫描，两端接 50 Ω 负载）"
+        }
+        // Interpolating a narrower isolation sweep onto a wider calibration would silently
+        // clamp the ends, so require the captured band to cover the calibrated band instead.
+        if (raw.size > 1 && current.freqHz.size > 1) {
+            val calStart = current.freqHz.first()
+            val calStop = current.freqHz.last()
+            if (raw.freqHz.first() > calStart || raw.freqHz.last() < calStop) {
+                return "隔离测量的频段没有覆盖已校准频段，请恢复相同的扫描设置后重测"
+            }
+        }
+        val isolation = IsolationMeasurement(
+            measured21 = resampleOnto(raw.freqHz, raw.s21, current.freqHz),
+            measured12 = resampleOnto(raw.freqHz, raw.s12, current.freqHz),
+        )
+        val updated = SoltMath.replaceIsolation(current, isolation)
+            ?: return "隔离更新失败：THRU 数据与当前校准不一致"
+        setCalibration(calibration.value.withSolt(updated), source = "MIXED")
+        addLog("Isolation terms replaced from a new measurement (12-term model kept)")
+        return null
+    }
+
+    /** Removes the isolation correction without touching the rest of the 12-term model. */
+    fun clearIsolation(): String? {
+        val current = calibration.value.solt ?: return "当前没有 12 项 SOLT 校准"
+        if (current.through == null) return "这份校准没有保存 THRU 原始数据，无法单独清除隔离"
+        val updated = SoltMath.replaceIsolation(current, null) ?: return "隔离清除失败"
+        setCalibration(calibration.value.withSolt(updated), source = "MIXED")
+        addLog("Isolation correction removed")
         return null
     }
 
@@ -753,6 +875,10 @@ class VnaRepository(
 
     fun clearThru() {
         setCalibration(calibration.value.copy(thrus = emptyList()), source = "MIXED")
+    }
+
+    fun clearSolt() {
+        setCalibration(calibration.value.withoutSolt(), source = "MIXED")
     }
 
     fun shutdown() {

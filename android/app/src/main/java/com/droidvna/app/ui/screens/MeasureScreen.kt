@@ -725,7 +725,7 @@ private fun MeasureSidebar(
         ) {
             SweepCard(vm, config)
             TraceCard(vm, config, enabled, chartMode, markerCount)
-            CalibrationCard(vm, calibration, calibrationOn)
+            CalibrationCard(vm, calibration, calibrationOn, config)
             ExportCard(vm)
             if (info != null) {
                 Text(
@@ -807,7 +807,12 @@ private fun SweepCard(vm: MainViewModel, config: SweepConfig) {
 }
 
 @Composable
-private fun CalibrationCard(vm: MainViewModel, calibration: CalibrationSet, calibrationOn: Boolean) {
+private fun CalibrationCard(
+    vm: MainViewModel,
+    calibration: CalibrationSet,
+    calibrationOn: Boolean,
+    config: SweepConfig,
+) {
     SectionCard(
         title = "校准",
         trailing = {
@@ -830,13 +835,16 @@ private fun CalibrationCard(vm: MainViewModel, calibration: CalibrationSet, cali
             modifier = Modifier.horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            if (calibration.solt != null) {
+                ChoiceChip("12 项 SOLT", true) {}
+            }
             if (calibration.solFor(1) != null) ChoiceChip("P1 SOL", true) {}
             if (calibration.solFor(2) != null) ChoiceChip("P2 SOL", true) {}
             if (calibration.thrus.isNotEmpty()) ChoiceChip("THRU", true) {}
         }
         if (calibration.isEmpty) {
             Text(
-                "1 端口 SOL 与 THRU 归一化可显著改善测量精度。",
+                "完整 SOLT 可同时修正反射与传输误差；1 端口 SOL 与 THRU 归一化也能改善精度。",
                 color = VnaTextMuted,
                 fontSize = 11.5.sp,
                 modifier = Modifier.padding(top = 6.dp),
@@ -846,6 +854,30 @@ private fun CalibrationCard(vm: MainViewModel, calibration: CalibrationSet, cali
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ChoiceChip(if (calibrationOn) "校准已启用" else "校准已停用", calibrationOn) {
                     vm.setCalibrationEnabled(!calibrationOn)
+                }
+            }
+            val range = calibration.calibratedRange()
+            // Points outside the calibrated band are deliberately left uncorrected, so make that
+            // visible instead of silently showing a partially calibrated trace.
+            if (calibrationOn && range != null && !range.covers(config.startHz, config.stopHz)) {
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.Top) {
+                    Icon(
+                        Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = VnaSecondary,
+                        modifier = Modifier.size(15.dp).padding(top = 1.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "测量范围覆盖未校准频段：已校准 " +
+                            formatFrequency(range.startHz.toDouble(), 3) + " – " +
+                            formatFrequency(range.endHz.toDouble(), 3) +
+                            "，超出部分按未校准显示。",
+                        color = VnaSecondary,
+                        fontSize = 10.5.sp,
+                        lineHeight = 15.sp,
+                    )
                 }
             }
         }

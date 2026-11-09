@@ -23,12 +23,18 @@ import com.droidvna.app.model.CalKitStandard
 import com.droidvna.app.model.CalMath
 import com.droidvna.app.model.CalStandard
 import com.droidvna.app.model.CalStandardKind
+import com.droidvna.app.model.CalStandardModel
 import com.droidvna.app.model.CalibrationFileImporter
 import com.droidvna.app.model.CalibrationSet
 import com.droidvna.app.model.Complex
+import com.droidvna.app.model.IsolationMeasurement
+import com.droidvna.app.model.OnePortStandards
 import com.droidvna.app.model.SParam
 import com.droidvna.app.model.SolCal
+import com.droidvna.app.model.SoltCal
+import com.droidvna.app.model.SoltMath
 import com.droidvna.app.model.ThruCal
+import com.droidvna.app.model.TwoPortStandard
 import com.droidvna.app.model.SweepConfig
 import com.droidvna.app.model.SweepResult
 import com.droidvna.app.model.Marker
@@ -70,8 +76,15 @@ data class CalDraft(
     val p1: Map<CalStandard, SweepResult> = emptyMap(),
     val p2: Map<CalStandard, SweepResult> = emptyMap(),
     val thru: SweepResult? = null,
+    /** Optional crosstalk measurement with both ports terminated. */
+    val isolation: SweepResult? = null,
 ) {
     fun captures(port: Int): Map<CalStandard, SweepResult> = if (port == 1) p1 else p2
+
+    /** True when both ports have Open/Short/Load plus a THRU, i.e. SOLT can be computed. */
+    val canSolveSolt: Boolean
+        get() = thru != null &&
+            CalStandard.entries.all { p1.containsKey(it) && p2.containsKey(it) }
 }
 
 @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
@@ -128,6 +141,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val calMessage = MutableStateFlow<String?>(null)
     val calOpenDelayPs = MutableStateFlow("0")
     val calShortDelayPs = MutableStateFlow("0")
+    /** Optional electrical length of the manual THRU standard, used by the SOLT solve. */
+    val calThruDelayPs = MutableStateFlow("0")
 
     val ecalConnected = MutableStateFlow(false)
     val ecalInfo = MutableStateFlow<EcalSnapshot?>(null)
@@ -138,6 +153,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val ecalProgress = MutableStateFlow(0.0)
     val ecalMessage = MutableStateFlow<String?>(null)
     val ecalAvailable = MutableStateFlow(0)
+    /**
+     * Let the E-Cal device perform the isolation measurement as part of its run.
+     *
+     * Off by default: on a two-port E-Cal such as the ECB-60 the isolation path is poor, so the
+     * crosstalk it reports is usually worse than what mechanical loads on both ports would give.
+     * Users can either enable this or add/replace the isolation afterwards with loads.
+     */
+    val ecalUseIsolation = MutableStateFlow(false)
 
     /** One-shot notice shown on the measure screen after a launch that restored a calibration. */
     private val _restoreNotice = MutableStateFlow<String?>(null)
@@ -681,6 +704,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         val wasRunning = repo.running.value
+        val withIsolation = ecalUseIsolation.value && calPorts >= 2
         calBusy.value = true
         ecalBusy.value = true
         ecalProgress.value = 0.0
@@ -688,9 +712,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         ecalMessage.value = "正在执行电子校准…"
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
-                val sols = ArrayList<SolCal>()
-                val thrus = ArrayList<ThruCal>()
-                val total = calPorts * 3 + if (calPorts >= 2) 1 else 0
+                val total = calPorts * 3 + if (calPorts >= 2) (if (withIsolation) 2 else 1) else 0
                 var done = 0
                 fun step() {
                     done++
@@ -743,48 +765,47 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     }
 
+                    val grid = capturesByPort.getValue(1)[CalStandard.OPEN]!!.freqHz
+                    if (grid.size < 2) throw IllegalStateException("捕获点数不足")
+
+                    fun resample(freqHz: LongArray, values: Array<Complex>): Array<Complex> =
+                        if (freqHz.size == grid.size && freqHz.contentEquals(grid)) {
+                            values.copyOf()
+                        } else {
+                            Array(grid.size) { i -> CalMath.interpolate(freqHz, values, grid[i].toDouble()) }
+                        }
+
+                    // Per-port reflection standards, gathered once and reused by both the
+                    // 1-port coefficients and the 12-term solution.
+                    val portStandards = LinkedHashMap<Int, OnePortStandards>()
                     for (p in 1..calPorts) {
                         val captures = capturesByPort.getValue(p)
-                        val open = captures[CalStandard.OPEN]!!
-                        val short = captures[CalStandard.SHORT]!!
-                        val load = captures[CalStandard.LOAD]!!
-                        val grid = open.freqHz
-                        if (grid.size < 2) throw IllegalStateException("捕获点数不足")
-                        fun measured(sweep: com.droidvna.app.model.SweepResult): Array<Complex> {
-                            val arr = if (p == 1) sweep.s11 else sweep.s22
-                            return Array(grid.size) { i ->
-                                if (sweep.freqHz.size == grid.size && sweep.freqHz[i] == grid[i]) {
-                                    arr[i]
-                                } else {
-                                    CalMath.interpolate(sweep.freqHz, arr, grid[i].toDouble())
-                                }
-                            }
+                        fun measured(kind: CalStandard): Array<Complex> {
+                            val sweep = captures.getValue(kind)
+                            return resample(sweep.freqHz, if (p == 1) sweep.s11 else sweep.s22)
                         }
-                        fun actual(key: String, selector: (CalKitStandard) -> Array<Complex>): Array<Complex> {
+                        fun actual(key: String): Array<Complex> {
                             val std = ecalStandards[key] ?: throw IllegalStateException("缺少系数 " + key)
-                            val arr = selector(std)
-                            if (std.freqHz.size < 2 || arr.size != std.freqHz.size) {
+                            if (std.freqHz.size < 2 || std.s11.size != std.freqHz.size) {
                                 throw IllegalStateException("系数 " + key + " 没有有效数据")
                             }
-                            return Array(grid.size) { i -> CalMath.interpolate(std.freqHz, arr, grid[i].toDouble()) }
+                            return Array(grid.size) { i ->
+                                CalMath.interpolate(std.freqHz, std.s11, grid[i].toDouble())
+                            }
                         }
-                        val oa = actual("P" + p + "_OPEN") { it.s11 }
-                        val sa = actual("P" + p + "_SHORT") { it.s11 }
-                        val la = actual("P" + p + "_LOAD") { it.s11 }
-                        val cal = CalMath.solveSol(
-                            grid,
-                            measured(open),
-                            measured(short),
-                            measured(load),
-                            oa,
-                            sa,
-                            la,
-                            p,
-                        ) ?: throw IllegalStateException("端口 " + p + " SOL 计算无解")
-                        sols.add(cal)
+                        portStandards[p] = OnePortStandards(
+                            measuredOpen = measured(CalStandard.OPEN),
+                            measuredShort = measured(CalStandard.SHORT),
+                            measuredLoad = measured(CalStandard.LOAD),
+                            actualOpen = actual("P" + p + "_OPEN"),
+                            actualShort = actual("P" + p + "_SHORT"),
+                            actualLoad = actual("P" + p + "_LOAD"),
+                        )
                     }
 
+                    var solt: SoltCal? = null
                     if (calPorts >= 2) {
+                        // ---- THRU ----
                         repo.stopScanning()
                         // The reference workflow opens all E-Cal ports before creating the
                         // through path; do the same so no stale LOAD/OPEN remains.
@@ -801,32 +822,95 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         if (std.freqHz.size < 2 || std.s21.size != std.freqHz.size || std.s12.size != std.freqHz.size) {
                             throw IllegalStateException("P12_THROUGH 系数没有有效数据")
                         }
-                        val grid = thru.freqHz
-                        fun act(arr: Array<Complex>): Array<Complex> =
+                        fun ideal(arr: Array<Complex>): Array<Complex> =
                             Array(grid.size) { i -> CalMath.interpolate(std.freqHz, arr, grid[i].toDouble()) }
-                        val a21 = act(std.s21)
-                        val a12 = act(std.s12)
-                        val t21 = Array(grid.size) { i ->
-                            val a = a21[i]
-                            val m = thru.s21[i]
-                            if (a.isFinite() && a.abs() > 1e-12 && m.isFinite()) m / a else m
-                        }
-                        val t12 = Array(grid.size) { i ->
-                            val a = a12[i]
-                            val m = thru.s12[i]
-                            if (a.isFinite() && a.abs() > 1e-12 && m.isFinite()) m / a else m
-                        }
-                        thrus.add(ThruCal(1, 2, grid.copyOf(), t21))
-                        thrus.add(ThruCal(2, 1, grid.copyOf(), t12))
+                        val thruStandard = TwoPortStandard(
+                            measured11 = resample(thru.freqHz, thru.s11),
+                            measured21 = resample(thru.freqHz, thru.s21),
+                            measured12 = resample(thru.freqHz, thru.s12),
+                            measured22 = resample(thru.freqHz, thru.s22),
+                            actual11 = ideal(std.s11),
+                            actual21 = ideal(std.s21),
+                            actual12 = ideal(std.s12),
+                            actual22 = ideal(std.s22),
+                        )
                         step()
+
+                        // ---- Isolation (optional, user-selected) ----
+                        // Both E-Cal ports on LOAD, then whatever is left on S21/S12 is crosstalk.
+                        // Skipped by default: on a two-port E-Cal such as the ECB-60 the isolation
+                        // path is poor and mechanical loads give a better result, which can be
+                        // added later without redoing the rest of the calibration.
+                        var isolation: IsolationMeasurement? = null
+                        var isolationProblem: String? = null
+                        if (withIsolation) {
+                            repo.stopScanning()
+                            dev.setAllNone(calPorts)
+                            delay(100)
+                            try {
+                                for (p in 1..calPorts) {
+                                    if (!dev.setStandardChecked(p, EcalStandard.LOAD)) {
+                                        throw IllegalStateException("切换到 LOAD 失败（E-Cal 端口 " + p + "）")
+                                    }
+                                }
+                                delay(150)
+                                val iso = repo.captureIsolation()
+                                if (iso == null) {
+                                    isolationProblem = "没有扫描数据"
+                                } else {
+                                    isolation = IsolationMeasurement(
+                                        measured21 = resample(iso.freqHz, iso.s21),
+                                        measured12 = resample(iso.freqHz, iso.s12),
+                                    )
+                                }
+                            } catch (e: Exception) {
+                                isolationProblem = e.message ?: "隔离测量失败"
+                            }
+                            step()
+                            if (isolationProblem != null) {
+                                // Isolation is optional upstream as well: continue with zero isolation.
+                                ecalMessage.value = "隔离测量跳过（" + isolationProblem + "），按零隔离继续"
+                            }
+                        }
+
+                        solt = SoltMath.solve(
+                            grid,
+                            portStandards.getValue(1),
+                            portStandards.getValue(2),
+                            thruStandard,
+                            isolation,
+                        ) ?: throw IllegalStateException("SOLT 计算无解（检查 E-Cal 系数与 THRU 连接）")
+                    }
+
+                    val sols = ArrayList<SolCal>()
+                    for (p in 1..calPorts) {
+                        val s = portStandards.getValue(p)
+                        val terms = SoltMath.portTerms(
+                            s.measuredOpen, s.measuredShort, s.measuredLoad,
+                            s.actualOpen, s.actualShort, s.actualLoad,
+                        ) ?: throw IllegalStateException("端口 " + p + " SOL 计算无解")
+                        sols.add(
+                            SolCal(
+                                port = p,
+                                freqHz = grid.copyOf(),
+                                e00 = terms.directivity,
+                                e11 = terms.sourceMatch,
+                                e01e10 = terms.reflectionTracking,
+                            )
+                        )
                     }
 
                     repo.setCalibration(
-                        CalibrationSet(sols, thrus),
+                        CalibrationSet(sol = sols, solt = solt),
                         source = "ECAL",
                         detail = ecalSelectedSet.value.ifBlank { "E-Cal" },
                     )
-                    calMessage.value = "电子校准完成：SOL " + sols.size + " 端口 · THRU " + thrus.size / 2 + " 组"
+                    calMessage.value = if (solt != null) {
+                        "电子校准完成：完整 12 项 SOLT · " + grid.size + " 点" +
+                            (if (solt.hasIsolation) " · 含隔离测量" else " · 未做隔离测量")
+                    } else {
+                        "电子校准完成：1 端口 SOL（单端口校准件无法做双端口 SOLT）"
+                    }
                     ecalMessage.value = calMessage.value
                 } catch (e: Exception) {
                     val msg = "电子校准失败：" + (e.message ?: e.javaClass.simpleName)
@@ -895,6 +979,171 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Optional isolation capture: terminate both ports with matched loads and measure. */
+    fun captureIsolation() {
+        if (calBusy.value) return
+        calBusy.value = true
+        calMessage.value = null
+        viewModelScope.launch {
+            try {
+                val raw = repo.captureIsolation()
+                if (raw == null) {
+                    calMessage.value = "没有收到扫描数据，请确认设备正在扫描"
+                } else {
+                    calDraft.update { it.copy(isolation = raw) }
+                    calMessage.value = "隔离测量已捕获（两端接匹配负载）"
+                }
+            } catch (e: Exception) {
+                calMessage.value = "捕获失败：" + (e.message ?: "unknown")
+            } finally {
+                calBusy.value = false
+            }
+        }
+    }
+
+    /** Puts a captured array onto the common calibration grid. */
+    private fun resample(freqHz: LongArray, values: Array<Complex>, grid: LongArray): Array<Complex> {
+        if (freqHz.size == grid.size && freqHz.contentEquals(grid)) return values.copyOf()
+        return Array(grid.size) { i -> CalMath.interpolate(freqHz, values, grid[i].toDouble()) }
+    }
+
+    /**
+     * Computes and applies the full 12-term SOLT correction from the captured draft:
+     * Open/Short/Load on both ports (ideal standards plus the optional port delays), a THRU
+     * (ideal through with the optional electrical delay) and the optional isolation measurement.
+     */
+    fun computeSolt() {
+        val draft = calDraft.value
+        if ((repo.info.value?.numPorts ?: 1) < 2) {
+            calMessage.value = "完整 SOLT 需要双端口 VNA；单端口设备请使用 1 端口 SOL"
+            return
+        }
+        val missing = ArrayList<String>()
+        if (draft.thru == null) missing.add("THRU")
+        for (port in 1..2) {
+            val captures = draft.captures(port)
+            for (kind in CalStandard.entries) {
+                if (!captures.containsKey(kind)) missing.add("端口 " + port + " " + kind.label)
+            }
+        }
+        if (missing.isNotEmpty()) {
+            calMessage.value = "SOLT 需要先捕获：" + missing.joinToString("、")
+            return
+        }
+
+        val grid = draft.p1.getValue(CalStandard.OPEN).freqHz
+        if (grid.size < 2) {
+            calMessage.value = "校准点数不足，请增大扫描点数后重做"
+            return
+        }
+
+        // Every capture has to span the same scan range. Resampling a narrower capture onto this
+        // grid would silently clamp its out-of-band points to the endpoint values, which yields
+        // plausible-looking but wrong error terms with no other symptom.
+        val mismatched = ArrayList<String>()
+        fun requireSameSpan(label: String, sweep: SweepResult) {
+            if (sweep.freqHz.isEmpty() ||
+                sweep.freqHz.first() != grid.first() ||
+                sweep.freqHz.last() != grid.last()
+            ) {
+                mismatched.add(label)
+            }
+        }
+        for (port in 1..2) {
+            val captures = draft.captures(port)
+            for (kind in CalStandard.entries) {
+                requireSameSpan("端口 " + port + " " + kind.label, captures.getValue(kind))
+            }
+        }
+        requireSameSpan("THRU", draft.thru!!)
+        draft.isolation?.let { requireSameSpan("隔离", it) }
+        if (mismatched.isNotEmpty()) {
+            calMessage.value = "各次捕获的扫描范围不一致（" + mismatched.joinToString("、") +
+                "），请保持扫描设置不变后重做"
+            return
+        }
+
+        val openDelay = calOpenDelayPs.value.toDoubleOrNull() ?: 0.0
+        val shortDelay = calShortDelayPs.value.toDoubleOrNull() ?: 0.0
+        val thruDelay = calThruDelayPs.value.toDoubleOrNull() ?: 0.0
+
+        fun standardsFor(port: Int): OnePortStandards {
+            val captures = draft.captures(port)
+            fun measured(kind: CalStandard): Array<Complex> {
+                val sweep = captures.getValue(kind)
+                val values = if (port == 1) sweep.s11 else sweep.s22
+                return resample(sweep.freqHz, values, grid)
+            }
+            return OnePortStandards(
+                measuredOpen = measured(CalStandard.OPEN),
+                measuredShort = measured(CalStandard.SHORT),
+                measuredLoad = measured(CalStandard.LOAD),
+                actualOpen = Array(grid.size) {
+                    CalMath.standardGamma(grid[it], CalMath.SolStandard.OPEN, openDelay)
+                },
+                actualShort = Array(grid.size) {
+                    CalMath.standardGamma(grid[it], CalMath.SolStandard.SHORT, shortDelay)
+                },
+                actualLoad = Array(grid.size) { Complex.ZERO },
+            )
+        }
+
+        val thru = draft.thru!!
+        val thruModel = CalStandardModel.Through(z0 = 50.0, delayPs = thruDelay, loss = 0.0)
+        val thruStandard = TwoPortStandard(
+            measured11 = resample(thru.freqHz, thru.s11, grid),
+            measured21 = resample(thru.freqHz, thru.s21, grid),
+            measured12 = resample(thru.freqHz, thru.s12, grid),
+            measured22 = resample(thru.freqHz, thru.s22, grid),
+            actual11 = Array(grid.size) { thruModel.s11At(grid[it].toDouble()) },
+            actual21 = Array(grid.size) { thruModel.s21At(grid[it].toDouble()) },
+            actual12 = Array(grid.size) { thruModel.s12At(grid[it].toDouble()) },
+            actual22 = Array(grid.size) { thruModel.s22At(grid[it].toDouble()) },
+        )
+
+        val isolation = draft.isolation?.let { sweep ->
+            IsolationMeasurement(
+                measured21 = resample(sweep.freqHz, sweep.s21, grid),
+                measured12 = resample(sweep.freqHz, sweep.s12, grid),
+            )
+        }
+
+        val cal = SoltMath.solve(grid, standardsFor(1), standardsFor(2), thruStandard, isolation)
+        if (cal == null) {
+            calMessage.value = "SOLT 计算无解：检查标准件连接、扫描点数与 THRU 延迟"
+            return
+        }
+        val error = repo.applySolt(cal)
+        calMessage.value = error ?: buildString {
+            append("完整 SOLT 已应用：12 项误差模型 · ")
+            append(grid.size)
+            append(" 点")
+            append(if (cal.hasIsolation) " · 含隔离测量" else " · 未做隔离测量")
+        }
+    }
+
+    /**
+     * Replaces only the isolation terms of the current 12-term calibration.
+     *
+     * Works for a calibration that came from a manual SOLT, an imported `.cal` or an E-Cal:
+     * the transmission tracking is recomputed from the stored THRU measurement, so the other
+     * eleven terms are untouched and Open/Short/Load do not have to be redone.
+     */
+    fun applyIsolationOnly() {
+        val sweep = calDraft.value.isolation
+        if (sweep == null) {
+            calMessage.value = "请先捕获隔离测量（两端都接 50 Ω 负载）"
+            return
+        }
+        val error = repo.applyIsolation(sweep)
+        calMessage.value = error ?: "隔离项已单独更新（其余误差项保持不变）"
+    }
+
+    fun clearIsolationTerms() {
+        val error = repo.clearIsolation()
+        calMessage.value = error ?: "已清除隔离修正，其余误差项保持不变"
+    }
+
     fun computeSol(port: Int) {
         val draft = calDraft.value
         val open = draft.captures(port)[CalStandard.OPEN]
@@ -925,7 +1174,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             calMessage.value = "请先捕获 THRU"
             return
         }
-        val err = repo.applyThru(thru)
+        val err = repo.applyThru(thru, calThruDelayPs.value.toDoubleOrNull() ?: 0.0)
         calMessage.value = err ?: "THRU 归一化已应用"
     }
 
