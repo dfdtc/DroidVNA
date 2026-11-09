@@ -13,11 +13,14 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -111,7 +114,31 @@ private data class ChartGeometry(
     val logX: Boolean = false,
 )
 
-private data class SmithGeometry(val cx: Float, val cy: Float, val radius: Float)
+private data class SmithGeometry(
+    val cx: Float,
+    val cy: Float,
+    val radius: Float,
+    /** Reflection-coefficient position under (cx, cy); full-circle view is the origin. */
+    val focusRE: Float = 0f,
+    val focusIM: Float = 0f,
+    /** Half-width of the viewport in |Γ| units; the full circle is span 1. */
+    val span: Float = 1f,
+)
+
+/**
+ * Zoom/pan state of the Smith view.
+ *
+ * [re]/[im] is the Γ shown at the centre of the widget and [span] is the half-width of the
+ * visible window in Γ units, so the untouched full-circle view is `SmithView.FULL`.
+ */
+private data class SmithView(val re: Float = 0f, val im: Float = 0f, val span: Float = 1f) {
+    companion object {
+        val FULL = SmithView()
+        /** Never zoom in past this; also keeps the unit-circle rim reachable while panning. */
+        const val MIN_SPAN = 0.02f
+        const val MAX_SPAN = 1f
+    }
+}
 
 @Composable
 fun VnaChart(
@@ -130,6 +157,12 @@ fun VnaChart(
     autoY: Boolean = true,
     onAutoYChange: (Boolean) -> Unit = {},
     logFrequencyAxis: Boolean = false,
+    /** Marker shown with a highlight ring, normally the one M1..Mn chip / trace slider edits. */
+    focusedMarkerId: Int? = null,
+    /** Called when the user drags the trace-freedom slider along the right edge of the chart. */
+    onMoveFocusedMarker: (Double) -> Unit = {},
+    /** Label of the frequency slider (already translated); null hides the slider. */
+    sliderLabel: String? = null,
     /** Draw the app identity as a faint watermark behind the traces. */
     showWatermark: Boolean = true,
     modifier: Modifier = Modifier,
@@ -139,8 +172,15 @@ fun VnaChart(
     var manualYMin by remember { mutableDoubleStateOf(-80.0) }
     var manualYMax by remember { mutableDoubleStateOf(0.0) }
     var crosshairFreq by remember { mutableStateOf<Double?>(null) }
+    /** Zoom/pan of the Smith view; reset by the fit button, double tap and a config change. */
+    var smithView by remember { mutableStateOf(SmithView.FULL) }
     var lastTapTime by remember { mutableLongStateOf(0L) }
     var lastTapPosition by remember { mutableStateOf(Offset.Zero) }
+    var sliderEditing by remember { mutableStateOf(false) }
+    // The slider always addresses the full configured bandwidth, so its frequency axis is the
+    // sweep config itself - unlike the plot, which follows the user's zoom.
+    val focusedMarker = markers.firstOrNull { it.id == focusedMarkerId } ?: markers.firstOrNull()
+    val sliderFraction = focusedMarker?.let { fractionOf(it.freqHz, config) }
 
     LaunchedEffect(config.startHz, config.stopHz) {
         viewStart = config.startHz.toDouble()
@@ -173,12 +213,15 @@ fun VnaChart(
     val currentLogX = rememberUpdatedState(logFrequencyAxis)
     val currentYMin = rememberUpdatedState(yMin)
     val currentYMax = rememberUpdatedState(yMax)
+    val currentSmithView = rememberUpdatedState(smithView)
     val currentOnMoveMarker = rememberUpdatedState(onMoveMarker)
     val currentOnAutoYChange = rememberUpdatedState(onAutoYChange)
 
     fun resetView() {
         viewStart = config.startHz.toDouble()
         viewStop = config.stopHz.toDouble()
+        // The Smith view is not a frequency window: "fit" there means back to the whole circle.
+        smithView = SmithView.FULL
         onAutoYChange(true)
         crosshairFreq = null
     }
@@ -199,7 +242,11 @@ fun VnaChart(
                         val modeNow = currentMode.value
                         val plot = if (modeNow == ChartMode.SMITH) smithBounds(width, height, this)
                         else plotBounds(width, height, this)
-                        val smith = if (modeNow == ChartMode.SMITH) smithGeometry(width, height, this) else null
+                        val smith = if (modeNow == ChartMode.SMITH) {
+                            smithGeometry(width, height, this, currentSmithView.value)
+                        } else {
+                            null
+                        }
                         val geometry = ChartGeometry(
                             plot = if (smith != null) Rect(smith.cx - smith.radius, smith.cy - smith.radius, smith.cx + smith.radius, smith.cy + smith.radius) else plot,
                             viewStart = currentViewStart.value,
@@ -211,8 +258,9 @@ fun VnaChart(
 
                         fun markerScreenPos(marker: Marker): Offset {
                             return if (smith != null) {
-                                val idx = currentResult.value?.nearestIndex(marker.freqHz) ?: 0
-                                val gamma = currentResult.value?.s11?.getOrNull(idx) ?: Complex.NAN
+                                val sweep = currentResult.value
+                                val idx = sweep?.nearestIndex(marker.freqHz) ?: 0
+                                val gamma = sweep?.s11?.getOrNull(idx) ?: Complex.NAN
                                 gammaToOffset(gamma, smith)
                             } else {
                                 Offset(freqToX(marker.freqHz, geometry), geometry.plot.center.y)
@@ -247,6 +295,25 @@ fun VnaChart(
                                 last = change.position
                                 change.consume()
                             }
+                        } else if (hitMarker != null && modeNow == ChartMode.SMITH && smith != null) {
+                            // On the Smith circle the trace is a curve, not a column: the marker
+                            // follows the finger along the trace in two dimensions. Only the
+                            // distance to the finger matters (the trace picks the frequency), so
+                            // the grab point is offset-tracked and the marker glides under the
+                            // fingertip instead of jumping to the nearest trace point.
+                            val sweep = currentResult.value
+                            val anchor = markerScreenPos(hitMarker)
+                            if (sweep == null) return@awaitEachGesture
+                            val offset = anchor - down.position
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (!change.pressed) break
+                                nearestTraceFreq(change.position + offset, sweep, currentEnabled.value, smith)?.let { snap ->
+                                    currentOnMoveMarker.value(hitMarker.id, snap.second)
+                                }
+                                change.consume()
+                            }
                         } else {
                             var transformed = false
                             var totalMove = 0f
@@ -258,7 +325,15 @@ fun VnaChart(
                                 if (pressed.size >= 2) {
                                     transformed = true
                                     crosshairFreq = null
-                                    if (modeNow != ChartMode.SMITH) {
+                                    if (modeNow == ChartMode.SMITH) {
+                                        // Pinch and two-finger drag steer the Smith viewport.
+                                        val zoom = event.calculateZoom()
+                                        val pan = event.calculatePan()
+                                        if (smith != null) {
+                                            val next = applySmithTransform(currentSmithView.value, zoom, pan, smith.radius)
+                                            if (next != currentSmithView.value) smithView = next
+                                        }
+                                    } else {
                                         val zoom = event.calculateZoom()
                                         val pan = event.calculatePan()
                                         val centroid = event.calculateCentroid(useCurrent = true)
@@ -309,7 +384,8 @@ fun VnaChart(
             val plot = if (mode == ChartMode.SMITH) smithBounds(size.width, size.height, this)
             else plotBounds(size.width, size.height, this)
             if (mode == ChartMode.SMITH) {
-                drawSmith(result, enabled, markers, plot, showWatermark, this)
+                val smith = smithGeometry(size.width, size.height, this, smithView)
+                drawSmith(result, enabled, markers, smith, smithView, showWatermark, this, focusedMarker?.id)
             } else {
                 drawXy(
                     result, enabled, markers, plot, mode, viewStart, viewStop, yMin, yMax,
@@ -317,17 +393,46 @@ fun VnaChart(
                 )
             }
             crosshairFreq?.let { f ->
-                if (mode == ChartMode.SMITH) drawSmithCrosshair(result, enabled, f, plot, this)
-                else drawXyCrosshair(result, enabled, f, plot, mode, viewStart, viewStop, yMin, yMax, logFrequencyAxis, this)
+                if (mode == ChartMode.SMITH) {
+                    val smith = smithGeometry(size.width, size.height, this, smithView)
+                    drawSmithCrosshair(result, enabled, f, smith, plot, this)
+                } else {
+                    drawXyCrosshair(result, enabled, f, plot, mode, viewStart, viewStop, yMin, yMax, logFrequencyAxis, this)
+                }
             }
         }
 
-        // Fit button
+        // Fit button: restores the full frequency span (dB / Phase / VSWR) or the whole Smith
+        // circle when it has been zoomed. It is highlighted while a view is off its default so
+        // the button visibly does something, and tells the user how to zoom.
+        val zoomed = if (mode == ChartMode.SMITH) {
+            smithView != SmithView.FULL
+        } else {
+            viewStart != config.startHz.toDouble() || viewStop != config.stopHz.toDouble()
+        }
         IconButton(
             onClick = { resetView() },
             modifier = Modifier.align(Alignment.TopEnd).padding(6.dp).size(38.dp),
         ) {
-            Icon(Icons.Default.CenterFocusStrong, contentDescription = tr("缩放至全带宽"), tint = VnaTextMuted)
+            Icon(
+                Icons.Default.CenterFocusStrong,
+                contentDescription = if (mode == ChartMode.SMITH) tr("复位圆图") else tr("缩放至全带宽"),
+                tint = if (zoomed) VnaPrimary else VnaTextMuted,
+            )
+        }
+        // Zoom readout for the Smith view, so a pinch has visible feedback.
+        if (mode == ChartMode.SMITH && smithView.span < SmithView.FULL.span) {
+            Text(
+                text = String.format("×%.1f", 1f / smithView.span),
+                color = VnaPrimary,
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(end = 46.dp, top = 40.dp)
+                    .background(Color(0xCC0F171D), RoundedCornerShape(5.dp))
+                    .padding(horizontal = 5.dp, vertical = 2.dp),
+            )
         }
 
         if (result != null) {
@@ -376,6 +481,25 @@ fun VnaChart(
             }
         }
 
+        // Trace-freedom slider along the bottom of the plot. On the Smith circle the trace is a
+        // curve, so a precise tap on it is hard on a small screen; this steers the focused marker
+        // along the sweep by frequency and makes that interaction obvious.
+        if (focusedMarker != null && sliderFraction != null) {
+            TraceSlider(
+                x = sliderFraction,
+                label = sliderLabel ?: "迹线频率",
+                markerLabel = "M" + focusedMarker.id,
+                frequencyText = formatFrequency(snapToSweep(focusedMarker.freqHz, result), 4),
+                dragging = sliderEditing,
+                onDrag = { t ->
+                    sliderEditing = true
+                    onMoveFocusedMarker(snapToSweep(frequencyAt(t, config), result))
+                },
+                onDragEnd = { sliderEditing = false },
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
+        }
+
         if (result == null) {
             androidx.compose.foundation.layout.Column(
                 modifier = Modifier.align(Alignment.Center),
@@ -400,6 +524,129 @@ fun VnaChart(
     }
 }
 
+/**
+ * Compact slider drawn along the bottom edge of the chart. The marker is steered by dragging
+ * the thumb, which is the touch-friendly way to position a marker on the Smith circle where the
+ * trace is a thin curve.
+ */
+@Composable
+private fun BoxScope.TraceSlider(
+    x: Float,
+    label: String,
+    markerLabel: String,
+    frequencyText: String,
+    dragging: Boolean,
+    onDrag: (Float) -> Unit,
+    onDragEnd: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 10.dp, vertical = 6.dp)
+            .background(Color(0xE60F171D), RoundedCornerShape(9.dp))
+            .padding(horizontal = 8.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(markerLabel, color = VnaSecondary, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+        Spacer(Modifier.width(6.dp))
+        Text(label, color = VnaTextMuted, fontSize = 10.sp, maxLines = 1)
+        Spacer(Modifier.width(8.dp))
+        Canvas(
+            modifier = Modifier
+                .weight(1f)
+                .height(26.dp)
+                .pointerInput(Unit) {
+                    detectHorizontalDragGestures(
+                        onDragStart = { offset ->
+                            onDrag((offset.x / size.width.toFloat()).coerceIn(0f, 1f))
+                        },
+                        onDragEnd = onDragEnd,
+                        onDragCancel = onDragEnd,
+                    ) { change, _ ->
+                        onDrag((change.position.x / size.width.toFloat()).coerceIn(0f, 1f))
+                        change.consume()
+                    }
+                },
+        ) {
+            val cy = size.height / 2f
+            val trackLeft = 6.dp.toPx()
+            val trackRight = size.width - 6.dp.toPx()
+            val thumbX = trackLeft + (trackRight - trackLeft) * x.coerceIn(0f, 1f)
+            drawLine(
+                color = VnaOutline,
+                start = Offset(trackLeft, cy),
+                end = Offset(trackRight, cy),
+                strokeWidth = 3.dp.toPx(),
+                cap = StrokeCap.Round,
+            )
+            drawLine(
+                color = VnaSecondary.copy(alpha = 0.75f),
+                start = Offset(trackLeft, cy),
+                end = Offset(thumbX, cy),
+                strokeWidth = 3.dp.toPx(),
+                cap = StrokeCap.Round,
+            )
+            drawCircle(
+                color = if (dragging) VnaSecondary else VnaSurfaceElevated,
+                radius = 8.dp.toPx(),
+                center = Offset(thumbX, cy),
+            )
+            drawCircle(
+                color = VnaSecondary,
+                radius = 8.dp.toPx(),
+                center = Offset(thumbX, cy),
+                style = Stroke(2.dp.toPx()),
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        Text(frequencyText, color = VnaText, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+    }
+}
+
+/**
+ * Position (0..1) of [freqHz] along the chart's frequency axis. Prefers the frequency axis used
+ * to draw the trace data; falls back to the sweep config when no data exists yet.
+ */
+private fun fractionAt(result: SweepResult?, freqHz: Double, config: SweepConfig): Float? {
+    val data = result
+    if (data != null && data.size >= 2) {
+        val lo = data.freqHz.first().toDouble()
+        val hi = data.freqHz.last().toDouble()
+        if (hi > lo) return ((freqHz - lo) / (hi - lo)).toFloat().coerceIn(0f, 1f)
+    }
+    val lo = config.startHz.toDouble()
+    val hi = config.stopHz.toDouble()
+    if (hi <= lo) return null
+    return ((freqHz - lo) / (hi - lo)).toFloat().coerceIn(0f, 1f)
+}
+
+/**
+ * Fraction (0..1) of [freqHz] along the configured sweep band, or null when the band is empty.
+ * The slider always spans the whole configured range, independent of the plot zoom.
+ */
+internal fun fractionOf(freqHz: Double, config: SweepConfig): Float? {
+    val lo = config.startHz.toDouble()
+    val hi = config.stopHz.toDouble()
+    if (hi <= lo) return null
+    return ((freqHz - lo) / (hi - lo)).toFloat().coerceIn(0f, 1f)
+}
+
+/** Frequency at fraction [t] (0..1) of the configured sweep band. */
+internal fun frequencyAt(t: Float, config: SweepConfig): Double {
+    val lo = config.startHz.toDouble()
+    val hi = config.stopHz.toDouble()
+    return lo + t.coerceIn(0f, 1f).toDouble() * (hi - lo)
+}
+
+/**
+ * Snap [freqHz] to the nearest measured sweep point so a marker always sits on the trace.
+ */
+internal fun snapToSweep(freqHz: Double, result: SweepResult?): Double {
+    if (result == null || result.freqHz.isEmpty()) return freqHz
+    return result.freqHz.getOrNull(result.nearestIndex(freqHz))?.toDouble() ?: freqHz
+}
+
 private fun plotBounds(width: Float, height: Float, density: Density): Rect {
     with(density) {
         val left = 56.dp.toPx()
@@ -409,19 +656,27 @@ private fun plotBounds(width: Float, height: Float, density: Density): Rect {
         return Rect(left, top, width - right, max(top + 10f, height - bottom))
     }
 }
-
+/** Circle of the chart canvas used by the Smith view; the zoomed viewport fills this square. */
 private fun smithBounds(width: Float, height: Float, density: Density): Rect {
     val side = min(width, height)
     with(density) {
-        val inset = max(48.dp.toPx(), min(width, height) * 0.10f)
+        val inset = max(12.dp.toPx(), min(width, height) * 0.06f)
         val r = (side / 2f - inset).coerceAtLeast(20f)
         return Rect(width / 2f - r, height / 2f - r, width / 2f + r, height / 2f + r)
     }
 }
 
-private fun smithGeometry(width: Float, height: Float, density: Density): SmithGeometry {
+private fun smithGeometry(width: Float, height: Float, density: Density, view: SmithView = SmithView.FULL): SmithGeometry {
     val bounds = smithBounds(width, height, density)
-    return SmithGeometry(bounds.center.x, bounds.center.y, bounds.width / 2f)
+    val r = bounds.width / 2f
+    return SmithGeometry(
+        cx = bounds.center.x,
+        cy = bounds.center.y,
+        radius = r,
+        focusRE = view.re,
+        focusIM = view.im,
+        span = view.span,
+    )
 }
 
 private fun freqToX(freq: Double, geometry: ChartGeometry): Float {
@@ -460,7 +715,82 @@ private fun valueToY(value: Double, geometry: ChartGeometry): Float {
 
 private fun gammaToOffset(gamma: Complex, smith: SmithGeometry): Offset {
     if (!gamma.isFinite()) return Offset.Unspecified
-    return Offset(smith.cx + (gamma.re * smith.radius).toFloat(), smith.cy - (gamma.im * smith.radius).toFloat())
+    val span = smith.span.coerceAtLeast(1e-6f)
+    return Offset(
+        smith.cx + ((gamma.re - smith.focusRE) / span * smith.radius).toFloat(),
+        smith.cy - ((gamma.im - smith.focusIM) / span * smith.radius).toFloat(),
+    )
+}
+
+/** Inverse of [gammaToOffset]: the reflection coefficient under a screen position. */
+private fun offsetToGamma(position: Offset, smith: SmithGeometry): Complex {
+    val span = smith.span.coerceAtLeast(1e-6f)
+    val re = smith.focusRE + (position.x - smith.cx) / smith.radius * span
+    val im = smith.focusIM - (position.y - smith.cy) / smith.radius * span
+    return Complex(re.toDouble(), im.toDouble())
+}
+
+/**
+ * Frequency of the Smith trace point closest to [target] on screen.
+ *
+ * The Smith circle plots reflection coefficients, so a drag is resolved against S11 - the same
+ * trace the marker dots sit on. Returns null when the trace has no finite point inside the circle.
+ */
+private fun nearestTraceFreq(
+    target: Offset,
+    sweep: SweepResult,
+    enabled: Set<SParam>,
+    smith: SmithGeometry,
+): Pair<Int, Double>? {
+    val traced = if (enabled.contains(SParam.S11)) listOf(SParam.S11) else SParam.entries.filter { it != SParam.S21 && it != SParam.S12 && enabled.contains(it) }
+    val arr = sweep.param(traced.firstOrNull() ?: SParam.S11)
+    var best = -1
+    var bestDist = Float.POSITIVE_INFINITY
+    for (i in sweep.freqHz.indices) {
+        val c = arr.getOrNull(i) ?: continue
+        if (!c.isFinite()) continue
+        val o = gammaToOffset(c, smith)
+        if (o == Offset.Unspecified) continue
+        val d = (o - target).getDistanceSquared()
+        if (d < bestDist) {
+            bestDist = d
+            best = i
+        }
+    }
+    if (best < 0) return null
+    return best to sweep.freqHz[best].toDouble()
+}
+
+/**
+ * Apply a pinch/pan to the Smith viewport.
+ *
+ * The content follows the fingers like a map: pinching out widens the circle, dragging moves it
+ * with the finger. The view is clamped so the unit circle can never be lost - its centre must
+ * stay inside the window and the window may not grow past the whole circle.
+ */
+private fun applySmithTransform(
+    view: SmithView,
+    zoom: Float,
+    pan: Offset,
+    widgetRadius: Float,
+): SmithView {
+    if (widgetRadius <= 0f) return view
+    // Keep the zoom within the same range applyTransform uses, so a stray scale factor (0 for a
+    // degenerate gesture) cannot collapse the view.
+    val z = zoom.toDouble().coerceIn(0.01, 100.0)
+    val newSpan = (view.span / z).toFloat().coerceIn(SmithView.MIN_SPAN, SmithView.MAX_SPAN)
+    // Screen pixels -> Γ units at the new scale.
+    val perPixel = view.span / widgetRadius
+    // Drag right moves the content right, i.e. the window centre moves left in Γ.
+    var newRe = view.re - pan.x * perPixel
+    var newIm = view.im + pan.y * perPixel
+    // Keep the Γ=0 origin (the Smith centre) inside the window, with a small margin so the
+    // centre cross stays grabbable at high zoom.
+    val limitRe = (1f - 0.25f) * newSpan.coerceAtMost(SmithView.MAX_SPAN)
+    val limitIm = (1f - 0.25f) * newSpan.coerceAtMost(SmithView.MAX_SPAN)
+    newRe = newRe.coerceIn(-limitRe.coerceAtLeast(0f), limitRe.coerceAtLeast(0f))
+    newIm = newIm.coerceIn(-limitIm.coerceAtLeast(0f), limitIm.coerceAtLeast(0f))
+    return SmithView(newRe, newIm, newSpan)
 }
 
 private fun applyTransform(
@@ -862,81 +1192,118 @@ private fun DrawScope.drawSmith(
     result: SweepResult?,
     enabled: Set<SParam>,
     markers: List<Marker>,
-    plot: Rect,
+    smith: SmithGeometry,
+    view: SmithView,
     watermark: Boolean,
     density: Density,
+    focusedMarkerId: Int? = null,
 ) {
-    val smith = SmithGeometry(plot.center.x, plot.center.y, plot.width / 2f)
     val grid = Color(0xFF2A3A45)
-    val unit = Path().apply { addOval(Rect(smith.cx - smith.radius, smith.cy - smith.radius, smith.cx + smith.radius, smith.cy + smith.radius)) }
+    val widget = Path().apply {
+        addOval(Rect(smith.cx - smith.radius, smith.cy - smith.radius, smith.cx + smith.radius, smith.cy + smith.radius))
+    }
     drawCircle(Color(0xFF0F171D), radius = smith.radius, center = Offset(smith.cx, smith.cy))
-    if (watermark) drawWatermark(plot, density)
-    clipPath(unit) {
-        val resistances = listOf(0.0, 0.2, 0.5, 1.0, 2.0, 5.0)
-        for (r in resistances) {
-            val centerX = smith.cx + (r / (1.0 + r) * smith.radius).toFloat()
-            val radius = (1.0 / (1.0 + r) * smith.radius).toFloat()
-            drawCircle(grid, radius = radius, center = Offset(centerX, smith.cy), style = Stroke(1f))
-        }
-        for (x0 in listOf(-5.0, -2.0, -1.0, -0.5, -0.2, 0.2, 0.5, 1.0, 2.0, 5.0)) {
-            val centerX = smith.cx + smith.radius
-            val centerY = smith.cy - (1.0 / x0 * smith.radius).toFloat()
-            val radius = (1.0 / abs(x0) * smith.radius).toFloat()
-            drawCircle(grid, radius = radius, center = Offset(centerX, centerY), style = Stroke(1f))
-        }
-        drawLine(grid, Offset(smith.cx - smith.radius, smith.cy), Offset(smith.cx + smith.radius, smith.cy), strokeWidth = 1f)
+    if (watermark) drawWatermark(Rect(smith.cx - smith.radius, smith.cy - smith.radius, smith.cx + smith.radius, smith.cy + smith.radius), density)
+    // The Smith grid and traces live inside the zoomable Γ viewport, clipped to the widget's
+    // circle (clipPath saves/restores the canvas state itself). The widget border stays fixed.
+    clipPath(widget) {
+        drawSmithGrid(smith, grid, density)
+        if (result != null) drawSmithTraces(result, enabled, markers, smith, density, focusedMarkerId)
     }
-    drawPath(unit, color = VnaOutline, style = Stroke(1.4f))
+    drawPath(widget, color = VnaOutline, style = Stroke(1.4f))
+}
 
-    // Labels for the real axis.
-    for ((r, label) in listOf(0.0 to "0", 1.0 to "1", 2.0 to "2", 5.0 to "5")) {
-        val x = smith.cx + (r / (1.0 + r) * smith.radius).toFloat()
-        drawTextAt(label, x, smith.cy + 16.dp.toPx(), textPaint(VnaTextMuted, 9.5f, density), alignCenter = true)
+/**
+ * Constant-resistance/constant-reactance grid, mapped through the current (possibly zoomed)
+ * Smith viewport so it scales with the traces when the user pinches.
+ */
+private fun DrawScope.drawSmithGrid(smith: SmithGeometry, grid: Color, density: Density) {
+    // Constant-resistance circles: centre (r/(1+r), 0), radius 1/(1+r) in Γ units.
+    for (r in GRID_RESISTANCES) {
+        val span = smith.span.coerceAtLeast(1e-6f)
+        val gcx = smith.cx + ((r / (1f + r) - smith.focusRE) / span * smith.radius).toFloat()
+        val radius = (1f / (1f + r) / span * smith.radius).toFloat()
+        drawCircle(grid, radius = radius, center = Offset(gcx, smith.cy), style = Stroke(1f))
     }
+    // Constant-reactance circles: centre (1, ±1/x), radius 1/|x| in Γ units.
+    for (x0 in GRID_REACTANCES) {
+        val gcx = smith.cx + ((1f - smith.focusRE) / smith.span.coerceAtLeast(1e-6f) * smith.radius).toFloat()
+        val gcy = smith.cy - ((-1f / x0 - smith.focusIM) / smith.span.coerceAtLeast(1e-6f) * smith.radius).toFloat()
+        val radius = (1f / abs(x0) / smith.span.coerceAtLeast(1e-6f) * smith.radius).toFloat()
+        drawCircle(grid, radius = radius, center = Offset(gcx, gcy), style = Stroke(1f))
+    }
+    // The real axis is the horizontal line through the Smith centre (Γ imaginary = 0).
+    val yAxis = smith.cy - (-smith.focusIM / smith.span.coerceAtLeast(1e-6f) * smith.radius).toFloat()
+    drawLine(grid, Offset(smith.cx - smith.radius, yAxis), Offset(smith.cx + smith.radius, yAxis), strokeWidth = 1f)
 
-    if (result == null) return
-    clipPath(unit) {
-        for (p in enabled) {
-            if (p == SParam.S21 || p == SParam.S12) continue
-            val arr = result.param(p)
-            val path = Path()
-            var started = false
-            for (i in result.freqHz.indices) {
-                val c = arr[i]
-                if (!c.isFinite()) {
-                    started = false
-                    continue
-                }
-                val o = gammaToOffset(c, smith)
-                if (!started) {
-                    path.moveTo(o.x, o.y)
-                    started = true
-                } else {
-                    path.lineTo(o.x, o.y)
-                }
+    // Real-axis labels (0, 1, 2, 5 Ω) when they fall inside the visible window.
+    val labelPaint = textPaint(VnaTextMuted, 9.5f, density)
+    for ((r, label) in listOf(0.0f to "0", 1.0f to "1", 2.0f to "2", 5.0f to "5")) {
+        val re = r / (1f + r)
+        val x = smith.cx + ((re - smith.focusRE) / smith.span.coerceAtLeast(1e-6f) * smith.radius).toFloat()
+        if (x !in (smith.cx - smith.radius)..(smith.cx + smith.radius)) continue
+        drawTextAt(label, x, yAxis + 16.dp.toPx(), labelPaint, alignCenter = true)
+    }
+}
+
+/** Trace and marker drawing for the Smith view; clipped to the widget by the caller. */
+private fun DrawScope.drawSmithTraces(
+    result: SweepResult,
+    enabled: Set<SParam>,
+    markers: List<Marker>,
+    smith: SmithGeometry,
+    density: Density,
+    focusedMarkerId: Int?,
+) {
+    for (p in enabled) {
+        if (p == SParam.S21 || p == SParam.S12) continue
+        val arr = result.param(p)
+        val path = Path()
+        var started = false
+        for (i in result.freqHz.indices) {
+            val c = arr[i]
+            if (!c.isFinite()) {
+                started = false
+                continue
             }
-            drawPath(path, color = p.color, style = Stroke(width = 2.2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+            val o = gammaToOffset(c, smith)
+            if (!started) {
+                path.moveTo(o.x, o.y)
+                started = true
+            } else {
+                path.lineTo(o.x, o.y)
+            }
         }
+        drawPath(path, color = p.color, style = Stroke(width = 2.2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
     }
     for (marker in markers) {
         val index = result.nearestIndex(marker.freqHz)
         val c = result.s11.getOrNull(index) ?: continue
         if (!c.isFinite()) continue
         val o = gammaToOffset(c, smith)
+        if (marker.id == focusedMarkerId) {
+            drawCircle(VnaSecondary.copy(alpha = 0.85f), radius = 9.dp.toPx(), center = o, style = Stroke(1.6.dp.toPx()))
+        }
         drawCircle(Color.White, radius = 4.dp.toPx(), center = o)
         drawTextAt("M" + marker.id, o.x + 6.dp.toPx(), o.y - 6.dp.toPx(), textPaint(VnaSecondary, 10f, density))
     }
 }
 
+/** Normalised-resistance grid families (r = R/Z0) for the Smith chart. */
+private val GRID_RESISTANCES = listOf(0.0f, 0.2f, 0.5f, 1.0f, 2.0f, 5.0f)
+
+/** Normalised-reactance grid families (x = X/Z0); both signs draw their own circle. */
+private val GRID_REACTANCES = listOf(-5.0f, -2.0f, -1.0f, -0.5f, -0.2f, 0.2f, 0.5f, 1.0f, 2.0f, 5.0f)
+
 private fun DrawScope.drawSmithCrosshair(
     result: SweepResult?,
     enabled: Set<SParam>,
     frequency: Double,
+    smith: SmithGeometry,
     plot: Rect,
     density: Density,
 ) {
     if (result == null) return
-    val smith = SmithGeometry(plot.center.x, plot.center.y, plot.width / 2f)
     val index = result.nearestIndex(frequency)
     val c = result.s11.getOrNull(index) ?: return
     if (!c.isFinite()) return
@@ -945,7 +1312,7 @@ private fun DrawScope.drawSmithCrosshair(
     drawCircle(VnaPrimary, radius = 6.dp.toPx(), center = o, style = Stroke(1.5.dp.toPx()))
     val lines = listOf(
         formatFrequency(result.freqHz.getOrNull(index)?.toDouble() ?: frequency, 4),
-        String.format("|Γ| %.3f   ∠ %.1f°", c.abs(), c.phaseDeg()),
+        String.format("|Γ| %.3f ∠%.0f°", c.abs(), c.phaseDeg()),
         String.format("VSWR %.2f", c.vswr()),
     )
     drawTooltip(lines, o.x, plot, density)
@@ -954,15 +1321,21 @@ private fun DrawScope.drawSmithCrosshair(
 private fun DrawScope.drawTooltip(lines: List<String>, anchorX: Float, plot: Rect, density: Density) {
     if (lines.isEmpty()) return
     val paint = textPaint(VnaText, 11f, density)
-    var width = 0f
-    for (line in lines) width = max(width, paint.measureText(line))
     val lineHeight = 16.dp.toPx()
     val pad = 8.dp.toPx()
-    val boxWidth = width + pad * 2
+    // On a small chart (landscape phone in Smith mode) the plot can be narrower than the readout
+    // itself. Cap the box to the plot so the position clamp below can never receive an empty
+    // range - that would throw IllegalArgumentException and take the whole app down mid-draw.
+    val maxBoxWidth = (plot.width - 2 * 4.dp.toPx()).coerceAtLeast(pad * 2 + 1f)
+    var width = 0f
+    for (line in lines) width = max(width, paint.measureText(line))
+    val boxWidth = min(width + pad * 2, maxBoxWidth)
     val boxHeight = lineHeight * lines.size + pad
     var x = anchorX + 12.dp.toPx()
     if (x + boxWidth > plot.right) x = anchorX - 12.dp.toPx() - boxWidth
-    x = x.coerceIn(plot.left + 4.dp.toPx(), plot.right - boxWidth - 4.dp.toPx())
+    val minX = plot.left + 4.dp.toPx()
+    val maxX = plot.right - boxWidth - 4.dp.toPx()
+    x = if (maxX > minX) x.coerceIn(minX, maxX) else minX
     val y = plot.top + 8.dp.toPx()
     drawRoundRect(
         color = VnaSurfaceElevated.copy(alpha = 0.96f),
@@ -988,19 +1361,36 @@ private fun DrawScope.drawTooltip(lines: List<String>, anchorX: Float, plot: Rec
  * App identity painted inside the plot, behind the traces. Kept faint so it reads as paper
  * stock rather than as a label, and drawn straight into the canvas so it never fights the
  * axis labels or the marker tooltip for space.
+ *
+ * Centred in the plot rather than tucked into a corner: a corner watermark is cropped away on
+ * small screens, while the middle of the plot is visible on every layout.
  */
 private fun DrawScope.drawWatermark(plot: Rect, density: Density) {
-    val title = textPaint(VnaText.copy(alpha = 0.13f), 26f, density).apply {
+    val cx = plot.center.x
+    val cy = plot.center.y
+    // Scale the title down on a narrow plot so it can never spill past the plot edges.
+    val nominal = 26f
+    val titlePaint = textPaint(VnaText.copy(alpha = 0.13f), nominal, density).apply {
         typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
     }
-    val subtitle = textPaint(VnaTextMuted.copy(alpha = 0.13f), 8f, density).apply {
+    val maxWidth = plot.width * 0.72f
+    if (titlePaint.measureText("DroidVNA") > maxWidth) {
+        titlePaint.textSize = titlePaint.textSize * maxWidth / titlePaint.measureText("DroidVNA")
+    }
+    val sizeSp = with(density) { titlePaint.textSize.toSp() }
+    val subtitle = textPaint(VnaTextMuted.copy(alpha = 0.13f), (sizeSp.value * 0.31f).coerceIn(5.5f, 8.5f), density).apply {
         typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.NORMAL)
     }
-    // Sits below the sweep-status chip in the top-left corner of the plot.
-    val x = plot.left + 14.dp.toPx()
-    val baseline = plot.top + 78.dp.toPx()
-    drawTextAt("DroidVNA", x, baseline, title)
-    drawTextAt("TOUCH VECTOR NETWORK ANALYZER", x + 1.dp.toPx(), baseline + 15.dp.toPx(), subtitle)
+    val titleHeight = titlePaint.fontMetrics.let { it.descent - it.ascent }
+    val subtitleHeight = subtitle.fontMetrics.let { it.descent - it.ascent }
+    val gap = titleHeight * 0.12f
+    val blockHeight = titleHeight + gap + subtitleHeight
+    val titleBaseline = cy - blockHeight / 2f - titlePaint.fontMetrics.ascent
+    val subtitleCenter = titleBaseline + gap + subtitleHeight / 2f
+    drawTextAt("DroidVNA", cx, titleBaseline, titlePaint, alignCenter = true)
+    // Centre the subtitle baseline on its own line so it stays centred with the title.
+    val subtitleBaseline = subtitleCenter - (subtitle.fontMetrics.ascent + subtitle.fontMetrics.descent) / 2f
+    drawTextAt("TOUCH VECTOR NETWORK ANALYZER", cx, subtitleBaseline, subtitle, alignCenter = true)
 }
 
 private fun textPaint(color: Color, sizeSp: Float, density: Density): android.graphics.Paint {

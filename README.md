@@ -30,8 +30,8 @@
 
 ## 项目状态
 
-- 当前版本 **0.5.0**（versionCode 7），要求 Android 8.0（API 26）及以上；compileSdk / targetSdk 36。
-- 仓库内提供预构建的 **release** APK：[dist/DroidVNA-0.5.0-release.apk](dist/DroidVNA-0.5.0-release.apk)，也可以从 GitHub Releases 下载。
+- 当前版本 **0.6.0**（versionCode 8），要求 Android 8.0（API 26）及以上；compileSdk / targetSdk 36。
+- 仓库内提供预构建的 **release** APK：[dist/DroidVNA-0.6.0-release.apk](dist/DroidVNA-0.6.0-release.apk)，也可以从 GitHub Releases 下载。
 - 已在 Xiaomi Pad（Android 17）+ Harogic B60（FW 1.8.6）上完成真机验证；ECB-60（FW 0.3.2）的 USB、系数读取和校准流程已实机跑通，但 0.4.0 及之前的校准结果存在 Smith 杂散，0.4.1 已改为 all-port 标准切换，等待实机复测；LibreVNA 官方硬件尚未上机实测。
 - 变更记录见 [CHANGELOG.md](CHANGELOG.md)，发布流程见 [docs/RELEASING.md](docs/RELEASING.md)。
 
@@ -102,16 +102,16 @@
 
 ## 安装
 
-已构建的 debug APK（仓库内）：
+已构建的 release APK（仓库内）：
 
 ```
-dist/DroidVNA-0.5.0-release.apk
-大小: 12,294,307 字节
-SHA-256: 6328B04AF45CDCAF07A644687DE1BB62C331D0E60932315EC74E5C2196BB9A8E
+dist/DroidVNA-0.6.0-release.apk
+大小: 12,310,687 字节
+SHA-256: 2F0B4948DDBEA4A13A74306F14D9CB0F20A31A95E61BFFA6191E7A088B727175
 ```
 
 ```bash
-adb install -r dist/DroidVNA-0.5.0-release.apk
+adb install -r dist/DroidVNA-0.6.0-release.apk
 ```
 
 也可以从仓库的 **Releases** 页面下载同一版本。该 APK 是 release 构建，使用项目发布密钥签署（证书 CN=Houran CHEN）；换用别的 keystore 重新签名后无法覆盖安装，只能先卸载。签名流程见 [docs/RELEASING.md](docs/RELEASING.md)。
@@ -125,7 +125,7 @@ INSTALL_FAILED_USER_RESTRICTED: Install canceled by user
 请使用 shell 安装方式（本机验证可用）：
 
 ```bash
-adb push dist/DroidVNA-0.5.0-release.apk /data/local/tmp/droidvna.apk
+adb push dist/DroidVNA-0.6.0-release.apk /data/local/tmp/droidvna.apk
 adb shell pm install -r -t /data/local/tmp/droidvna.apk
 ```
 

@@ -121,6 +121,9 @@ fun MeasureScreen(vm: MainViewModel, wide: Boolean) {
     val sideCollapsed by vm.sideControlsCollapsed.collectAsStateWithLifecycle()
     val notice by vm.restoreNotice.collectAsStateWithLifecycle()
     val hideWatermark by vm.hideWatermark.collectAsStateWithLifecycle()
+    val focusedMarker by vm.focusedMarkerId.collectAsStateWithLifecycle()
+    // The trace slider always steers a real marker: an explicit selection, else the first one.
+    val focusedMarkerId = focusedMarker.takeIf { id -> markers.any { it.id == id } } ?: markers.firstOrNull()?.id
     val configuration = LocalConfiguration.current
     // A phone in landscape has room for a vertical strip of acquisition controls on the left
     // and a wider chart on the right, so it is treated like the tablet layout.
@@ -191,12 +194,15 @@ fun MeasureScreen(vm: MainViewModel, wide: Boolean) {
                                 autoY = autoY,
                                 onAutoYChange = { vm.chartAutoY.value = it },
                                 logFrequencyAxis = logFrequencyAxis,
+                                focusedMarkerId = focusedMarkerId,
+                                onMoveFocusedMarker = { vm.moveFocusedMarker(it) },
+                                sliderLabel = if (mode == ChartMode.SMITH) tr("迹线频率") else tr("频率"),
                                 showWatermark = !hideWatermark,
                                 modifier = Modifier.weight(1f).fillMaxWidth(),
                             )
                             if (markers.isNotEmpty()) {
                                 Spacer(Modifier.height(8.dp))
-                                MarkerBar(vm, sweep, markers, enabled, mode)
+                                MarkerBar(vm, sweep, markers, enabled, mode, focusedMarkerId)
                             }
                         }
                     }
@@ -275,10 +281,13 @@ fun MeasureScreen(vm: MainViewModel, wide: Boolean) {
                             autoY = autoY,
                             onAutoYChange = { vm.chartAutoY.value = it },
                             logFrequencyAxis = logFrequencyAxis,
+                            focusedMarkerId = focusedMarkerId,
+                            onMoveFocusedMarker = { vm.moveFocusedMarker(it) },
+                            sliderLabel = if (mode == ChartMode.SMITH) tr("迹线频率") else tr("频率"),
                             showWatermark = !hideWatermark,
                             modifier = Modifier.weight(1f).fillMaxWidth(),
                         )
-                        if (markers.isNotEmpty()) MarkerBar(vm, sweep, markers, enabled, mode)
+                        if (markers.isNotEmpty()) MarkerBar(vm, sweep, markers, enabled, mode, focusedMarkerId)
                         ControlBar(
                             vm = vm,
                             running = running,
@@ -462,7 +471,14 @@ private fun MeasureHeader(
 
 
 @Composable
-private fun MarkerBar(vm: MainViewModel, sweep: SweepResult?, markers: List<Marker>, enabled: Set<SParam>, mode: ChartMode) {
+private fun MarkerBar(
+    vm: MainViewModel,
+    sweep: SweepResult?,
+    markers: List<Marker>,
+    enabled: Set<SParam>,
+    mode: ChartMode,
+    focusedMarkerId: Int?,
+) {
     val delta by vm.deltaMarkers.collectAsStateWithLifecycle()
     Surface(
         color = VnaSurface,
@@ -482,6 +498,8 @@ private fun MarkerBar(vm: MainViewModel, sweep: SweepResult?, markers: List<Mark
                         marker = marker,
                         enabled = enabled,
                         mode = mode,
+                        focused = marker.id == focusedMarkerId,
+                        onFocus = { vm.selectMarker(marker.id) },
                         onDelete = { vm.removeMarker(marker.id) },
                     )
                 }
@@ -562,14 +580,20 @@ private fun MarkerCard(
     marker: Marker,
     enabled: Set<SParam>,
     mode: ChartMode,
+    focused: Boolean,
+    onFocus: () -> Unit,
     onDelete: () -> Unit,
 ) {
     val index = sweep?.nearestIndex(marker.freqHz) ?: 0
     val frequency = sweep?.freqHz?.getOrNull(index)?.toDouble() ?: marker.freqHz
     Surface(
-        color = VnaSurfaceElevated,
+        color = if (focused) VnaSecondary.copy(alpha = 0.10f) else VnaSurfaceElevated,
         shape = RoundedCornerShape(10.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, VnaOutline),
+        border = androidx.compose.foundation.BorderStroke(
+            if (focused) 1.5.dp else 1.dp,
+            if (focused) VnaSecondary else VnaOutline,
+        ),
+        modifier = Modifier.clickable { onFocus() },
     ) {
         Column(Modifier.padding(start = 9.dp, end = 4.dp, top = 6.dp, bottom = 6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {

@@ -103,6 +103,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             .ifEmpty { setOf(SParam.S11, SParam.S21) }
     )
     val markers = MutableStateFlow(initialSettings.markerFreqs.mapIndexed { index, freq -> Marker(index + 1, freq) })
+    /** Marker the chart's trace slider steers; falls back to the first marker when unset. */
+    val focusedMarkerId = MutableStateFlow<Int?>(null)
     val deltaMarkers = MutableStateFlow(initialSettings.deltaMarkers)
     val messages = MutableSharedFlow<String>(extraBufferCapacity = 8)
 
@@ -406,18 +408,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun addMarker(freqHz: Double) {
         val marker = Marker(nextMarkerId++, freqHz)
         markers.update { it + marker }
+        focusedMarkerId.value = marker.id
     }
 
     fun moveMarker(id: Int, freqHz: Double) {
         markers.update { list -> list.map { if (it.id == id) it.copy(freqHz = freqHz) else it } }
     }
 
+    /** Choose which marker the chart's trace slider steers. */
+    fun selectMarker(id: Int) {
+        focusedMarkerId.value = id
+    }
+
+    /** Move the focused marker (the one the trace slider steers) to [freqHz]. */
+    fun moveFocusedMarker(freqHz: Double) {
+        val target = focusedMarkerId.value?.takeIf { id -> markers.value.any { it.id == id } }
+            ?: markers.value.firstOrNull()?.id ?: return
+        moveMarker(target, freqHz)
+    }
+
     fun removeMarker(id: Int) {
         markers.update { list -> list.filterNot { it.id == id } }
+        if (focusedMarkerId.value == id) focusedMarkerId.value = null
     }
 
     fun clearMarkers() {
         markers.value = emptyList()
+        focusedMarkerId.value = null
         nextMarkerId = 1
     }
 
