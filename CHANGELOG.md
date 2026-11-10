@@ -3,6 +3,8 @@
 本项目从 0.3.0 起公开维护。版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)，
 变更记录格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+> 本文件仅维护中文；每个版本的英文摘要见 [docs/en/release-notes](docs/en/release-notes/)。
+
 ## [0.7.0-beta] - 2026-11-10
 
 > **这是 Beta 版。** 12 项 SOLT 已在真机（Harogic B60 + ECB-60）上跑通并应用，但**绝对精度尚未与

@@ -1,5 +1,7 @@
 # 贡献指南
 
+> [English version](CONTRIBUTING.en.md)
+
 感谢你愿意改进 DroidVNA。这个项目面向真实硬件，改动不只影响界面，
 还会影响 USB 时序、校准精度和设备兼容性，所以提交前请尽量说明测试环境。
 
@@ -41,7 +43,9 @@ Copy-Item local.properties.example local.properties
 2. `./gradlew assembleDebug` 能生成 APK。
 3. 如果改了 USB / 扫描 / 校准逻辑，请在真实设备上至少验证一次连接、扫描和校准；
    没有硬件时用演示模式验证 UI 流程。
-4. 更新 `CHANGELOG.md`（用户可见的变化）和 `README.md`（行为、限制、截图有变化时）。
+4. 更新 `CHANGELOG.md`（用户可见的变化）；行为、限制、截图有变化时同步更新 `README.md`
+   与 `docs/` 下对应文档（[使用指南](docs/USER-GUIDE.md)、[校准指南](docs/CALIBRATION.md) 等），
+   并保持中英文版本一致。
 5. 不要提交 `local.properties`、`keystore.properties`、`*.jks`、`build/`、
    `LibreVNA/` 或 handout 文件。
 
