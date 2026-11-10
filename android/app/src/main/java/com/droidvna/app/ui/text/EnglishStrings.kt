@@ -429,6 +429,188 @@ internal object EnglishStrings {
         "界面" to "Interface",
         "TOUCH VECTOR NETWORK ANALYZER" to "TOUCH VECTOR NETWORK ANALYZER",
 
+        // App settings / calibration memory
+        "设置记忆" to "Remembered settings",
+        "记住扫描设置" to "Remember sweep settings",
+        "下次启动沿用频率范围、点数、IFBW、功率与平均。关闭时只在本次运行内保留。" to
+            "Reuse the frequency range, points, IFBW, power and averaging on the next launch. When off, they are kept for this session only.",
+        "关闭后连接设备只下发设置，需要手动点「开始扫描」。" to
+            "When off, connecting only sends the settings; start the sweep manually.",
+        "校准记忆" to "Calibration memory",
+        "自动保存并载入上次校准" to "Auto-save and load the last calibration",
+        "SOL / SOLT / THRU 与电子校准（E-Cal）的结果会立即保存到应用私有目录，下次启动自动载入。" to
+            "SOL / SOLT / THRU and E-Cal results are saved to the app's private directory immediately and loaded on the next launch.",
+        "暂无保存的校准。" to "No saved calibration.",
+        "12 项 SOLT " to "12-term SOLT ",
+        "12 项 SOLT" to "12-term SOLT",
+        "电子校准" to "Electronic calibration",
+        "混合" to "Mixed",
+        "保存时间 " to "Saved ",
+        "保存时间未知" to "Saved time unknown",
+        "忘记已保存的校准" to "Forget saved calibration",
+        "忘记已保存的校准？" to "Forget the saved calibration?",
+        "忘记" to "Forget",
+        "Android 应用没有可写的 /tmp，校准快照存放在应用私有目录（filesDir/calibration.json），随应用卸载一起删除。" to
+            "Android apps have no writable /tmp; calibration snapshots live in the app's private directory (filesDir/calibration.json) and are removed when the app is uninstalled.",
+        "当前校准会立即停止应用，并且下次启动不会再自动载入。随时可以重新做一次 SOL / THRU 或电子校准。" to
+            "The current calibration stops being applied immediately and will not be loaded on the next launch. You can redo SOL / THRU or E-Cal at any time.",
+        "（最近保存 " to " (last saved ",
+        " · 设备 " to " · device ",
+        ".cal 导入" to ".cal import",
+        "手动 SOL" to "Manual SOL",
+        "手动 SOLT" to "Manual SOLT",
+        "手动 THRU" to "Manual THRU",
+        "SOL 端口 " to "SOL port ",
+        "已开启校准记忆" to "Calibration memory enabled",
+        "已关闭校准记忆，校准文件已删除" to "Calibration memory disabled; the calibration file was deleted",
+        "已忘记保存的校准" to "Saved calibration forgotten",
+
+        // Trace settings / sweep
+        "运行" to "Run",
+        "Y 轴" to "Y axis",
+        "Y 轴自动缩放" to "Y-axis autoscale",
+        "关闭后锁定当前 Y 轴范围，与双击图表恢复自动等效。" to
+            "When off, the current Y range is locked, the same as double-tapping the chart to restore auto.",
+        "当前迹线" to "Current trace",
+        "迹线与模式：" to "Trace and mode: ",
+        " · Δ 标记 " to " · Δ markers ",
+        "这些选择会随设置记忆自动保存，下次启动时恢复。" to
+            "These choices are remembered automatically and restored on the next launch.",
+        " 当前设备最低 " to " The device minimum is ",
+
+        // Calibration screen
+        "已测" to "Measured",
+        "可跳过" to "Optional",
+        "（含隔离）" to " (with isolation)",
+        "（无隔离）" to " (no isolation)",
+        "含隔离" to "with isolation",
+        "无隔离" to "no isolation",
+        "校准已启用" to "Calibration on",
+        "校准已停用" to "Calibration off",
+        "已停用" to "Disabled",
+        "隔离" to "Isolation",
+        "隔离测量失败" to "Isolation measurement failed",
+        "隔离清除失败" to "Failed to clear isolation",
+        "隔离更新失败：THRU 数据与当前校准不一致" to
+            "Isolation update failed: the THRU data does not match the current calibration",
+        "清除隔离修正" to "Clear isolation correction",
+        "已校准频段 " to "Calibrated band ",
+        "已清除隔离修正，其余误差项保持不变" to "Isolation correction cleared; other error terms unchanged",
+        "隔离项已单独更新（其余误差项保持不变）" to
+            "Isolation updated on its own (other error terms unchanged)",
+        "隔离项可以单独替换：其余误差项和 THRU 原始数据都会保留，" to
+            "The isolation term can be replaced on its own: the other error terms and raw THRU data are kept,",
+        "不需要重做 Open / Short / Load。E-Cal 校准的结果同样适用。" to
+            "No need to redo Open / Short / Load. Results from an E-Cal calibration apply as well.",
+        "只用本次捕获更新隔离项" to "Update isolation from this capture",
+        "让电子校准件同时测隔离" to "Measure isolation with the E-Cal",
+        "计算并应用完整 SOLT" to "Compute and apply full SOLT",
+        "THRU 延迟（可选）" to "THRU delay (optional)",
+        "THRU 归一化（仅传输）" to "THRU normalization (transmission only)",
+        "THRU（P1 ↔ P2 直连）" to "THRU (P1 ↔ P2 through)",
+        "隔离（可选，两端接 50 Ω 负载）" to "Isolation (optional, 50 Ω loads on both ports)",
+        "两端都接 50 Ω 负载，测量剩余串扰" to
+            "Terminate both ports with 50 Ω loads to measure residual crosstalk",
+        "双端口 SOLT · 完整 12 项误差修正" to "2-port SOLT · full 12-term error correction",
+        "当前没有启用校准（有已保存的校准，可在应用设置里启用）。" to
+            "Calibration is not enabled (a saved calibration exists; enable it in App settings).",
+        "校准会自动保存，下次启动时自动载入" to
+            "The calibration is saved automatically and loaded on the next launch",
+        "校准记忆已关闭：本次运行的校准不会被保存。" to
+            "Calibration memory is off: this session's calibration will not be saved.",
+        "当前扫描范围覆盖未校准频段（" to "The current sweep covers an uncalibrated band (",
+        "），超出部分按未校准处理；建议重做校准或缩小扫描范围。" to
+            "); the rest is treated as uncalibrated; redo the calibration or narrow the sweep.",
+        "），请保持扫描设置不变后重做" to
+            "); keep the sweep settings unchanged and redo.",
+        "各次捕获的扫描范围不一致（" to "Capture sweep ranges differ (",
+        "还需要补齐上面的标准件测量才能计算。" to
+            "Complete the standard measurements above to compute.",
+        "完整 SOLT 需要双端口 VNA；单端口设备请使用上面的 1 端口 SOL。" to
+            "Full SOLT needs a 2-port VNA; use the 1-port SOL above on single-port devices.",
+        "完整 SOLT 需要双端口 VNA；单端口设备请使用 1 端口 SOL" to
+            "Full SOLT needs a 2-port VNA; use 1-port SOL on single-port devices",
+        "导入电脑版 LibreVNA-GUI 导出的 .cal（format 3）。移动端会重建 .cal 中 Open/Short/Load/Through 的测量结果：含有两端口的 1 端口测量和 THRU 时，直接重建完整 12 项双端口 SOLT 误差模型；否则退回 1 端口 SOL + THRU 归一化。" to
+            "Import a .cal file (format 3) exported by the desktop LibreVNA-GUI. The app rebuilds the Open/Short/Load/Through measurements from the file: when both ports' 1-port measurements and THRU are present it reconstructs the full 12-term 2-port SOLT error model; otherwise it falls back to 1-port SOL + THRU normalization.",
+        "注意：.cal 中的隔离（Isolation）测量会一并读取；缺少时按零隔离处理。" to
+            "Note: an Isolation measurement in the .cal file is read as well; when it is missing, zero isolation is assumed.",
+        "通过 USB SCPI 自动切换 Open / Short / Load / Through，测量后直接应用校准。VID:PID 1209:4122，使用 vendor interface 2。" to
+            "Switches Open / Short / Load / Through automatically over USB SCPI and applies the calibration after measuring. VID:PID 1209:4122, vendor interface 2.",
+        "双端口校准件会先完成两端 Open/Short/Load，再测 THRU，最后把两端都切到 LOAD 测一次隔离，然后解出完整 12 项误差模型。" to
+            "A 2-port E-Cal runs Open/Short/Load on both ports, then THRU, then switches both ports to LOAD for an isolation measurement, and finally solves the full 12-term error model.",
+        "已开启：校准最后会把两端切到 LOAD 测一次隔离（多花约几秒）" to
+            "On: the calibration ends with both ports switched to LOAD to measure isolation (a few extra seconds)",
+        "默认关闭：ECB-60 等双端口校准件的隔离通路较差，建议之后用机械 50 Ω 负载单独补测" to
+            "Off by default: 2-port E-Cal kits such as the ECB-60 have poor isolation paths; measure isolation later with mechanical 50 Ω loads instead",
+        "提示：B60 每次切换标准会执行 SA→VNA 复位，单步约多 1 秒；完整 2 端口 SOLT（含隔离）通常需要 15–25 秒。" to
+            "Note: on the B60 every standard switch performs an SA→VNA reset, adding about 1 s per step; a full 2-port SOLT (with isolation) usually takes 15–25 s.",
+        "将 Port 1 与 Port 2 直连后捕获一次 THRU，按「实测 / 理想」归一化 S21 / S12：消除跟踪误差，但不扣除端口失配。" to
+            "Connect Port 1 to Port 2 and capture THRU once. S21 / S12 are normalized as measured / ideal: this removes tracking error but not port mismatch.",
+        "THRU 延迟为 0 时理想直通为 1，即传统 0 dB 归一化；填了延迟就会把相位一并计入。" to
+            "With a THRU delay of 0 the ideal through is 1, i.e. classic 0 dB normalization; entering a delay also accounts for phase.",
+        "同一次捕获也会用于下面的完整 SOLT，不需要重复测量。" to
+            "This capture is also used by the full SOLT below; no need to measure twice.",
+        "同时解出方向性、源匹配、反射跟踪、接收机匹配、传输跟踪与隔离。相比 1 端口 SOL + THRU 归一化，它还会扣除端口失配，因此 S21 / S12 在端口反射较大时依然准确。" to
+            "Solves directivity, source match, reflection tracking, receiver match, transmission tracking and isolation at once. Unlike 1-port SOL + THRU normalization it also removes port mismatch, so S21 / S12 stay accurate even with strong port reflections.",
+        "完整 SOLT 可同时修正反射与传输误差；1 端口 SOL 与 THRU 归一化也能改善精度。" to
+            "Full SOLT corrects both reflection and transmission errors; 1-port SOL and THRU normalization also improve accuracy.",
+        "测量范围覆盖未校准频段：已校准 " to
+            "The sweep range covers an uncalibrated band: calibrated ",
+        "，超出部分按未校准显示。" to ", the rest is shown uncalibrated.",
+
+        // Runtime messages (MainViewModel / VnaRepository / importer)
+        "已自动载入上次校准（" to "Loaded the previous calibration (",
+        "，保存于 " to ", saved at ",
+        "系数数据无效：" to "Invalid coefficient data: ",
+        "切换到 " to "Switching to ",
+        " 失败（E-Cal 端口 " to " failed (E-Cal port ",
+        "切换到 LOAD 失败（E-Cal 端口 " to "Switching to LOAD failed (E-Cal port ",
+        "隔离测量跳过（" to "Isolation measurement skipped (",
+        "），按零隔离继续" to "), continuing with zero isolation",
+        " · 含隔离测量" to " · isolation measured",
+        " · 未做隔离测量" to " · isolation not measured",
+        "SOLT 需要先捕获：" to "SOLT needs these captures: ",
+        "隔离测量已捕获（两端接匹配负载）" to "Isolation captured (matched loads on both ports)",
+        "请先捕获隔离测量（两端都接 50 Ω 负载）" to
+            "Capture the isolation measurement first (50 Ω loads on both ports)",
+        "校准点数不足，请增大扫描点数后重做" to
+            "Not enough calibration points; increase the sweep points and redo",
+        "SOLT 校准点数不足，请增大扫描点数后重做" to
+            "Not enough SOLT calibration points; increase the sweep points and redo",
+        "SOLT 计算无解（检查 E-Cal 系数与 THRU 连接）" to
+            "SOLT has no solution (check the E-Cal coefficients and THRU connection)",
+        "SOLT 计算无解：检查标准件连接、扫描点数与 THRU 延迟" to
+            "SOLT has no solution: check the standard connections, sweep points and THRU delay",
+        "电子校准完成：完整 12 项 SOLT · " to "E-Cal complete: full 12-term SOLT · ",
+        "电子校准完成：1 端口 SOL（单端口校准件无法做双端口 SOLT）" to
+            "E-Cal complete: 1-port SOL (a 1-port E-Cal cannot do 2-port SOLT)",
+        "完整 SOLT 已应用：12 项误差模型 · " to "Full SOLT applied: 12-term error model · ",
+        "需要先完成完整 SOLT 校准，才能单独更新隔离" to
+            "Complete a full SOLT calibration before updating isolation separately",
+        "这份校准没有保存 THRU 原始数据，无法单独更新隔离，请重做 SOLT" to
+            "This calibration has no raw THRU data; isolation cannot be updated separately. Redo SOLT",
+        "这份校准没有保存 THRU 原始数据，无法单独清除隔离" to
+            "This calibration has no raw THRU data; isolation cannot be cleared separately",
+        "隔离数据无效（需要双端口扫描，两端接 50 Ω 负载）" to
+            "Invalid isolation data (needs a 2-port sweep with 50 Ω loads on both ports)",
+        "隔离测量的频段没有覆盖已校准频段，请恢复相同的扫描设置后重测" to
+            "The isolation sweep does not cover the calibrated band; restore the same sweep settings and measure again",
+        "当前没有 12 项 SOLT 校准" to "No 12-term SOLT calibration is active",
+        "THRU 标准件定义缺失，跳过 THRU 归一化" to
+            "THRU standard definition is missing; skipping THRU normalization",
+        "没有可用的 Open/Short/Load/Through 测量" to
+            "No usable Open/Short/Load/Through measurements",
+        "端口 2 的测量频段没有覆盖端口 1，未生成完整 SOLT" to
+            "Port 2 does not cover port 1's frequency range; full SOLT not generated",
+        "THRU 的测量频段没有覆盖 SOL 频率范围，未生成完整 SOLT" to
+            "THRU does not cover the SOL frequency range; full SOLT not generated",
+        "隔离测量的频段没有覆盖校准频段，已按零隔离处理" to
+            "The isolation measurement does not cover the calibrated band; zero isolation assumed",
+        "完整的 12 项 SOLT 无法求解（THRU 标准件或测量异常），仅应用 1 端口 SOL + THRU" to
+            "The full 12-term SOLT could not be solved (THRU standard or measurement problem); applying 1-port SOL + THRU only",
+        " · 12 项 SOLT" to " · 12-term SOLT",
+        "电子校准件没有 vendor interface" to "E-Cal has no vendor interface",
+
     )
 
     /**
@@ -448,6 +630,21 @@ internal object EnglishStrings {
         Regex("^无法解析 (\\S+) 第 (\\d+) 点：(.*)$") to { m ->
             "Unable to parse " + m.groupValues[1] + " point " + m.groupValues[2] + ": " + m.groupValues[3]
         },
+        Regex("^端口 (\\d+) 缺少 Open/Short/Load 中的一项，未生成 SOL$") to { m ->
+            "Port " + m.groupValues[1] + " is missing one of Open/Short/Load; SOL not generated"
+        },
+        Regex("^端口 (\\d+) 的标准件定义缺失，未生成 SOL$") to { m ->
+            "Port " + m.groupValues[1] + " has no calibration-standard definition; SOL not generated"
+        },
+        Regex("^端口 (\\d+) 的标准件没有可用的 Touchstone 数据，未生成 SOL$") to { m ->
+            "Port " + m.groupValues[1] + " standard has no usable Touchstone data; SOL not generated"
+        },
+        Regex("^端口 (\\d+) 的 SOL 方程无解（标准件过近或数据异常）$") to { m ->
+            "SOL equation for port " + m.groupValues[1] + " has no solution (standards too close or data invalid)"
+        },
+        Regex("^未能从 \\.cal 中恢复校准数据：(.*)$") to { m ->
+            "Could not restore calibration from the .cal file: " + m.groupValues[1]
+        },
     )
 
     fun translateWords(text: String): String {
@@ -460,7 +657,12 @@ internal object EnglishStrings {
             if (out.contains(zh)) out = out.replace(zh, en)
         }
         // Clean punctuation that is still Chinese after phrase replacement.
-        out = out.replace('，', ',').replace('。', '.').replace('：', ':').replace('（', '(').replace('）', ')')
+        out = out.replace('，', ',').replace('。', '.').replace('：', ':')
+            .replace('（', '(').replace('）', ')')
+            .replace("、", ", ").replace("；", "; ")
+            .replace('「', '"').replace('」', '"')
+        // Chinese has no plural forms; keep the common single-item case grammatical.
+        out = out.replace(" 1 points", " 1 point").replace(" 1 groups", " 1 group")
         return out
     }
 }
