@@ -9,7 +9,7 @@ First note the app version, Android version, VNA / E-Cal model and firmware, the
 If Xiaomi/Redmi/HyperOS reports `INSTALL_FAILED_USER_RESTRICTED: Install canceled by user`, use shell installation (verified on our test devices):
 
 ```bash
-adb push dist/DroidVNA-0.7.0-beta-release.apk /data/local/tmp/droidvna.apk
+adb push dist/DroidVNA-0.7.1-beta-release.apk /data/local/tmp/droidvna.apk
 adb shell pm install -r -t /data/local/tmp/droidvna.apk
 ```
 

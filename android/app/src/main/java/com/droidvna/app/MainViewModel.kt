@@ -38,6 +38,16 @@ import com.droidvna.app.model.TwoPortStandard
 import com.droidvna.app.model.SweepConfig
 import com.droidvna.app.model.SweepResult
 import com.droidvna.app.model.Marker
+import com.droidvna.app.model.analysis.Dtf
+import com.droidvna.app.model.analysis.DtfConfig
+import com.droidvna.app.model.analysis.DtfResult
+import com.droidvna.app.model.analysis.DtfWindow
+import com.droidvna.app.model.analysis.XdbReferenceMode
+import com.droidvna.app.model.analysis.XdbSearch
+import com.droidvna.app.model.analysis.XdbSearchResult
+import com.droidvna.app.model.analysis.XdbSide
+import com.droidvna.app.model.formatDb
+import com.droidvna.app.model.formatFrequency
 import com.droidvna.app.ui.chart.ChartMode
 import com.droidvna.app.ui.text.AppLanguage
 import com.droidvna.app.usb.EcalDevice
@@ -65,6 +75,9 @@ import kotlin.math.abs
 import kotlin.math.min
 
 enum class AppScreen { MEASURE, DEVICE, CALIBRATION }
+
+/** Secondary features under the trace "分析" menu. */
+enum class AnalysisTool { BANDWIDTH, XDB, DTF }
 
 enum class ExportFormat(val label: String, val extension: String, val mime: String) {
     S2P("Touchstone .s2p (2-port)", "s2p", "application/octet-stream"),
@@ -120,6 +133,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val focusedMarkerId = MutableStateFlow<Int?>(null)
     val deltaMarkers = MutableStateFlow(initialSettings.deltaMarkers)
     val messages = MutableSharedFlow<String>(extraBufferCapacity = 8)
+
+    // ---- Analysis menu: bandwidth search, XdB search and DTF ----
+    /** Which analysis sheet is open, or null when the menu is closed. */
+    val analysisTool = MutableStateFlow<AnalysisTool?>(null)
+    /** Last XdB / bandwidth result; kept so the sheet can show it after the markers are added. */
+    val xdbResult = MutableStateFlow<XdbSearchResult?>(null)
+    val xdbTrace = MutableStateFlow<SParam?>(null)
+    val xdbMessage = MutableStateFlow<String?>(null)
+    /** Last distance-to-fault result (a snapshot of the sweep it was computed from). */
+    val dtfResult = MutableStateFlow<DtfResult?>(null)
+    val dtfSourceTrace = MutableStateFlow<SParam?>(null)
+    val dtfMessage = MutableStateFlow<String?>(null)
+    val dtfBusy = MutableStateFlow(false)
+    /** Markers created by the last analysis run, replaced instead of piling up on re-search. */
+    private val analysisMarkerIds = mutableSetOf<Int>()
 
     /** Collapse state of the top control row (trace chips) - the app bar stays visible. */
     val topControlsCollapsed = MutableStateFlow(initialSettings.topControlsCollapsed)
@@ -428,10 +456,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         addMarker(freq)
     }
 
-    fun addMarker(freqHz: Double) {
+    fun addMarker(freqHz: Double): Marker {
         val marker = Marker(nextMarkerId++, freqHz)
         markers.update { it + marker }
         focusedMarkerId.value = marker.id
+        return marker
     }
 
     fun moveMarker(id: Int, freqHz: Double) {
@@ -453,12 +482,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun removeMarker(id: Int) {
         markers.update { list -> list.filterNot { it.id == id } }
         if (focusedMarkerId.value == id) focusedMarkerId.value = null
+        analysisMarkerIds.remove(id)
     }
 
     fun clearMarkers() {
         markers.value = emptyList()
         focusedMarkerId.value = null
         nextMarkerId = 1
+        analysisMarkerIds.clear()
     }
 
     fun peakMarker() {
@@ -1260,6 +1291,162 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun formatMarkerFrequency(marker: Marker): String {
         return com.droidvna.app.model.formatFrequency(markerFrequency(marker), 4)
+    }
+
+    // ------------------------------------------------------------------
+    // Analysis: bandwidth search / XdB search / DTF
+    // ------------------------------------------------------------------
+
+    fun openAnalysis(tool: AnalysisTool) {
+        analysisTool.value = tool
+        when (tool) {
+            AnalysisTool.BANDWIDTH, AnalysisTool.XDB -> xdbMessage.value = null
+            AnalysisTool.DTF -> dtfMessage.value = null
+        }
+    }
+
+    fun closeAnalysis() {
+        analysisTool.value = null
+    }
+
+    /**
+     * Runs an XdB search on [trace] and replaces the markers of the previous analysis run.
+     *
+     * Bandwidth search is the [XdbSide.BOTH] case of this routine, so both menu entries share
+     * one implementation. [dropDb] is entered as a positive number (3.0 = "3 dB below the
+     * reference").
+     */
+    fun runXdbSearch(
+        trace: SParam,
+        referenceMode: XdbReferenceMode,
+        cursorMarkerId: Int?,
+        dropDb: Double,
+        side: XdbSide,
+    ) {
+        val sweep = repo.sweep.value
+        if (sweep == null) {
+            xdbResult.value = null
+            xdbMessage.value = "还没有扫描数据"
+            return
+        }
+        if (!dropDb.isFinite() || dropDb <= 0.0) {
+            xdbResult.value = null
+            xdbMessage.value = "X 必须是大于 0 的 dB 值"
+            return
+        }
+        val values = sweep.param(trace)
+        val reference = when (referenceMode) {
+            XdbReferenceMode.PEAK -> XdbSearch.peakCursor(sweep.freqHz, values)
+            XdbReferenceMode.CURSOR -> {
+                val marker = markers.value.firstOrNull { it.id == cursorMarkerId }
+                    ?: markers.value.firstOrNull()
+                if (marker == null) {
+                    xdbResult.value = null
+                    xdbMessage.value = "请先在迹线上添加一个标记作为游标"
+                    return
+                }
+                XdbSearch.cursorAt(sweep.freqHz, values, marker.freqHz)
+            }
+        }
+        if (reference == null) {
+            xdbResult.value = null
+            xdbMessage.value = "当前迹线没有可用数据"
+            return
+        }
+        val result = XdbSearch.search(sweep.freqHz, values, reference, dropDb, side)
+        removeAnalysisMarkers()
+        if (result != null) {
+            result.lower?.let { analysisMarkerIds.add(addMarker(it.frequencyHz).id) }
+            result.upper?.let { analysisMarkerIds.add(addMarker(it.frequencyHz).id) }
+        }
+        xdbResult.value = result
+        xdbTrace.value = trace
+        xdbMessage.value = when {
+            result == null || result.foundCount == 0 ->
+                "未找到 -" + formatDb(dropDb, 1) + " 交叉点"
+            result.foundCount == 1 -> {
+                val foundSide = if (result.lower != null) "左侧" else "右侧"
+                "只找到" + foundSide + " 1 个边沿（-" + formatDb(dropDb, 1) + "）"
+            }
+            else ->
+                "已添加 2 个标记 · 带宽 " + formatFrequency(result.bandwidthHz ?: 0.0, 4) +
+                    " · 中心 " + formatFrequency(result.centerHz ?: 0.0, 4)
+        }
+    }
+
+    /**
+     * DTF on a snapshot of the current trace. The inverse transform runs off the main thread;
+     * a second request is ignored while one is still running.
+     */
+    fun runDtfAnalysis(
+        trace: SParam,
+        window: DtfWindow,
+        velocityFactor: Double,
+        zeroPadding: Int,
+        lossDbPerM: Double,
+        peakThresholdDb: Double,
+        stopDistanceM: Double?,
+    ) {
+        if (dtfBusy.value) return
+        val current = repo.sweep.value
+        // A partially swept trace is missing its upper band; running DTF on it would silently
+        // change the span and therefore the distance axis. Prefer the last complete sweep.
+        val sweep = (if (current != null && !current.isPartial) current else repo.lastCompleteSweep.value)
+        if (sweep == null) {
+            dtfMessage.value = "还没有扫描数据"
+            return
+        }
+        if (!velocityFactor.isFinite() || velocityFactor <= 0.0 || velocityFactor > 1.0) {
+            dtfMessage.value = "速度因子必须在 0–1 之间"
+            return
+        }
+        val freq = sweep.freqHz.copyOf()
+        val values = sweep.param(trace)
+        dtfBusy.value = true
+        dtfMessage.value = null
+        viewModelScope.launch {
+            try {
+                val result = withContext(Dispatchers.Default) {
+                    Dtf.analyze(
+                        freq,
+                        values,
+                        DtfConfig(
+                            window = window,
+                            velocityFactor = velocityFactor,
+                            zeroPadding = zeroPadding,
+                            stopDistanceM = stopDistanceM,
+                            lossDbPerM = lossDbPerM,
+                            peakThresholdDb = peakThresholdDb,
+                        ),
+                    )
+                }
+                dtfResult.value = result
+                dtfSourceTrace.value = trace
+                dtfMessage.value = if (result == null) {
+                    "DTF 计算失败：迹线点数不足或频率范围无效"
+                } else {
+                    null
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                dtfResult.value = null
+                dtfSourceTrace.value = trace
+                dtfMessage.value = "DTF 计算失败：" + (e.message ?: e.javaClass.simpleName)
+            } finally {
+                dtfBusy.value = false
+            }
+        }
+    }
+
+    private fun removeAnalysisMarkers() {
+        if (analysisMarkerIds.isEmpty()) return
+        val ids = analysisMarkerIds.toSet()
+        markers.update { list -> list.filterNot { it.id in ids } }
+        if (focusedMarkerId.value in ids) {
+            focusedMarkerId.value = markers.value.firstOrNull()?.id
+        }
+        analysisMarkerIds.clear()
     }
 
     override fun onCleared() {

@@ -13,7 +13,7 @@ cd android
 ./gradlew testDebugUnitTest
 ```
 
-52 JVM unit tests cover: CRC/frame coding, SweepSettings layout, Datapoint parsing, single/dual stage reassembly, incremental snapshots for slow sweeps, ring-buffer merging, SOL math and delay standards, full 12-term SOLT inverse solving / DUT round-trip correction / isolation subtraction / degenerate-standard rejection, **the forward model matching an independent signal-flow derivation point by point (1e-12)**, standards returning to ideal values after calibration, exact isolation replacement, calibrated-band coverage checks, demo-mode end-to-end SOLT, `.cal` parsing/rebuilding (including a purely parametric calkit and full SOLT), E-Cal coefficient ordering, Touchstone formats, and the English UI layer (labels, assembled messages, importer warnings, and Chinese mode returning input unchanged). A robustness group also covers: standard models at 0 Hz, single-point calibration rejection, truncated calibration snapshots not going out of bounds, rejection when standards are too close, and rejection of full SOLT when THRU does not cover the SOL band in a `.cal`.
+67 JVM unit tests cover: CRC/frame coding, SweepSettings layout, Datapoint parsing, single/dual stage reassembly, incremental snapshots for slow sweeps, ring-buffer merging, SOL math and delay standards, full 12-term SOLT inverse solving / DUT round-trip correction / isolation subtraction / degenerate-standard rejection, **the forward model matching an independent signal-flow derivation point by point (1e-12)**, standards returning to ideal values after calibration, exact isolation replacement, calibrated-band coverage checks, demo-mode end-to-end SOLT, `.cal` parsing/rebuilding (including a purely parametric calkit and full SOLT), E-Cal coefficient ordering, Touchstone formats, the English UI layer (labels, assembled messages, importer warnings, and Chinese mode returning input unchanged), bandwidth/XdB search (both/one side, edge interpolation, unfinished sweeps, invalid X values), and DTF (synthetic reflection distances, velocity-factor scaling, log-sweep resampling, peak threshold, display-distance truncation, 0 m wrap guard). A robustness group also covers: standard models at 0 Hz, single-point calibration rejection, truncated calibration snapshots not going out of bounds, rejection when standards are too close, and rejection of full SOLT when THRU does not cover the SOL band in a `.cal`.
 
 ## Manual validation on this machine
 
@@ -28,6 +28,14 @@ Manual validation (Xiaomi Pad, Android 17):
 - Chinese / English switching takes effect immediately and survives force-stop and reinstall
 - Language and About in App settings, plus the log frequency axis switch in trace settings, open correctly
 - The log frequency axis shows 500M / 1G / 2G / 3G ticks over 500 MHz – 3 GHz; Y auto and Y manual toggle both ways
+
+### 0.7.1-beta analysis tools (demo mode)
+
+- **Bandwidth search** (1.75–2.65 GHz demo band-pass): reference peak 2.3125 GHz, edges 1.8157 / 2.5889 GHz, two edge markers added; a second search replaced the previous analysis markers.
+- **Left-only XdB search**: only the left edge was added, and the sheet reported "only the left edge was found".
+- **DTF** (S11, Hann window, VF 0.66, 4× zero-padding): about 15.7 m maximum distance, 4.0 cm range resolution, 2048-point FFT; the distance trace, fault table, and 0 m wrap note all worked.
+- The analysis menu, sheets, and result text were fully translated in both Chinese and English.
+- **Not yet verified**: DTF distance accuracy against a known-length cable / fault; bandwidth and XdB search on a real VNA.
 
 ## Harogic B60 hardware validation
 

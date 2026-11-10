@@ -14,7 +14,8 @@
 
 ## Project status
 
-- Current version **0.7.0-beta** (versionCode 9), Android 8.0 (API 26) or newer; compileSdk / targetSdk 36.
+- Current version **0.7.1-beta** (versionCode 10), Android 8.0 (API 26) or newer; compileSdk / targetSdk 36.
+- 0.7.1-beta adds marker analysis tools (bandwidth search / XdB search / DTF). They are validated in demo mode and unit tests; DTF distance accuracy has not been compared against a real cable or fault yet.
 - The 12-term SOLT E-Cal flow has been run end-to-end on real hardware (Harogic B60 + ECB-60) and applied successfully, but **absolute accuracy has not been compared against the desktop app or a known DUT**, and the **manual SOLT flow has not been tested on hardware** yet (mechanical standards are missing). This is why the release is marked **beta**. LibreVNA's own hardware has not been tested yet.
 - Detailed validation records are in [Testing](docs/en/TESTING.md); changes are in [CHANGELOG.md](CHANGELOG.md) and the [release notes](docs/en/release-notes/).
 
@@ -22,6 +23,7 @@
 
 - **Real-time two-port sweeps**: S11 / S21 / S12 / S22, continuous or single sweep, pause/resume. At low IFBW the chart draws points as they arrive and updates with a ring buffer, never clearing every frame.
 - **Touch-first chart**: pinch to zoom/pan, single-finger cursor readout, dB / phase / VSWR / Smith modes; draggable markers, peak/valley search, dual-marker Δ.
+- **Marker analysis**: the "Analysis" menu next to the marker shortcuts provides bandwidth search, XdB search (left/right/both sides) and DTF (windowed IFFT with a distance-domain trace and fault table).
 - **Complete calibration chain**: 1-port SOL, THRU normalization, full 12-term two-port SOLT (optional isolation measurement), LibreCAL / ECB-60 electronic calibration, and LibreVNA-GUI `.cal` import. Results are stored per device serial and loaded automatically on the next launch.
 - **Data export**: Touchstone `.s2p` / `.s1p` and CSV to `Download/DroidVNA`, or share through the system share sheet.
 - **Touch UI**: a single `⋮` overflow menu, collapsible control rows, a vertical acquisition rail in landscape, a background watermark; sweep settings, markers, chart mode, and UI language are remembered.
@@ -45,11 +47,11 @@ More screenshots (E-Cal, B60, landscape, English UI) are in [docs/screenshots](d
 
 ## Download and install
 
-- Download the latest APK from [Releases](https://github.com/dfdtc/DroidVNA/releases), or use [dist/DroidVNA-0.7.0-beta-release.apk](dist/DroidVNA-0.7.0-beta-release.apk) from the repository.
+- Download the latest APK from [Releases](https://github.com/dfdtc/DroidVNA/releases), or use [dist/DroidVNA-0.7.1-beta-release.apk](dist/DroidVNA-0.7.1-beta-release.apk) from the repository.
 - Requirements: Android 8.0 (API 26) or newer, a device and cable with USB Host / OTG support, and VNA firmware protocol version 14.
 
 ```bash
-adb install -r dist/DroidVNA-0.7.0-beta-release.apk
+adb install -r dist/DroidVNA-0.7.1-beta-release.apk
 ```
 
 The APK is a release build signed with the project release key (certificate CN=Houran CHEN). Re-signing with a different keystore prevents in-place upgrades; uninstall first. See [Releasing](docs/en/RELEASING.md) for the signing flow.

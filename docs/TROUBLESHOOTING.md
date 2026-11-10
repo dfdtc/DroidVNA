@@ -9,7 +9,7 @@
 小米/红米/HyperOS 报 `INSTALL_FAILED_USER_RESTRICTED: Install canceled by user` 时，可使用 shell 安装方式（本机验证可用）：
 
 ```bash
-adb push dist/DroidVNA-0.7.0-beta-release.apk /data/local/tmp/droidvna.apk
+adb push dist/DroidVNA-0.7.1-beta-release.apk /data/local/tmp/droidvna.apk
 adb shell pm install -r -t /data/local/tmp/droidvna.apk
 ```
 

@@ -57,7 +57,7 @@ cp keystore.properties.example keystore.properties
 
 ## 技术栈
 
-Kotlin 2.4.21、Jetpack Compose（Material 3，BOM 2025.10.01）、AGP 8.13.2、Gradle 8.14.4、compileSdk / targetSdk 36、minSdk 26、Apache Commons Math 3.6.1（12 项 SOLT 的复数矩阵求解）。没有 native 库，APK 可直接安装到 arm64 / x86_64 设备。
+Kotlin 2.4.21、Jetpack Compose（Material 3，BOM 2025.10.01）、AGP 8.13.2、Gradle 8.14.4、compileSdk / targetSdk 36、minSdk 26、Apache Commons Math 3.6.1（12 项 SOLT 的复数矩阵求解，以及 DTF 的 `FastFourierTransformer` IFFT）。没有 native 库，APK 可直接安装到 arm64 / x86_64 设备。
 
 ## 持续集成
 
@@ -82,10 +82,11 @@ android/
       VnaSource.kt / DemoVnaSource.kt
       VnaRepository.kt           连接、扫描控制、平均、校准应用、持久化
     model/                       Complex、SweepConfig/Result、SOL 与完整 12 项 SOLT 校准数学（Solt.kt）、复数矩阵适配（ComplexMatrix.kt）、.cal 导入、E-Cal 系数解析
-    ui/                          Compose 页面、图表、底部面板、主题
+      analysis/                  带宽/XdB 搜索（XdbSearch.kt）与 DTF（Dtf.kt）
+    ui/                          Compose 页面、图表（含 DTF 距离域图表）、底部面板、主题
       text/                      中英文文案、翻译 Text 包装、语言状态
       screens/                   测量 / 设备 / 校准页面
-      sheets/                    扫描、导出、应用设置、迹线设置
+      sheets/                    扫描、导出、应用设置、迹线设置、分析面板
     export/                      Touchstone/CSV、MediaStore/分享
     data/CalibrationStore.kt     JSON 持久化
   app/src/test/                  JVM 单元测试

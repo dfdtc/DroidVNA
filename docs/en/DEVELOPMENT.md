@@ -57,7 +57,7 @@ cp keystore.properties.example keystore.properties
 
 ## Tech stack
 
-Kotlin 2.4.21, Jetpack Compose (Material 3, BOM 2025.10.01), AGP 8.13.2, Gradle 8.14.4, compileSdk / targetSdk 36, minSdk 26, Apache Commons Math 3.6.1 (complex matrix solves for 12-term SOLT). There are no native libraries, so the APK installs directly on arm64 / x86_64 devices.
+Kotlin 2.4.21, Jetpack Compose (Material 3, BOM 2025.10.01), AGP 8.13.2, Gradle 8.14.4, compileSdk / targetSdk 36, minSdk 26, Apache Commons Math 3.6.1 (complex matrix solves for 12-term SOLT and the `FastFourierTransformer` IFFT used by DTF). There are no native libraries, so the APK installs directly on arm64 / x86_64 devices.
 
 ## Continuous integration
 
@@ -82,10 +82,11 @@ android/
       VnaSource.kt / DemoVnaSource.kt
       VnaRepository.kt           Connection, sweep control, averaging, calibration, persistence
     model/                       Complex, SweepConfig/Result, SOL and full 12-term SOLT math (Solt.kt), complex matrix adapter (ComplexMatrix.kt), .cal import, E-Cal coefficient parsing
-    ui/                          Compose screens, charts, bottom sheets, theme
+      analysis/                  Bandwidth/XdB search (XdbSearch.kt) and DTF (Dtf.kt)
+    ui/                          Compose screens, charts (including the DTF distance-domain chart), bottom sheets, theme
       text/                      Chinese/English copy, translating Text wrapper, language state
       screens/                   Measure / Device / Calibration screens
-      sheets/                    Sweep, export, app settings, trace settings
+      sheets/                    Sweep, export, app settings, trace settings, analysis sheet
     export/                      Touchstone/CSV, MediaStore/share
     data/CalibrationStore.kt     JSON persistence
   app/src/test/                  JVM unit tests

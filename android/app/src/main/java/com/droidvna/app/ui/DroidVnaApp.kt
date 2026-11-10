@@ -36,6 +36,7 @@ import com.droidvna.app.MainViewModel
 import com.droidvna.app.ui.screens.CalibrationScreen
 import com.droidvna.app.ui.screens.DeviceScreen
 import com.droidvna.app.ui.screens.MeasureScreen
+import com.droidvna.app.ui.sheets.AnalysisSheet
 import com.droidvna.app.ui.sheets.AppSettingsSheet
 import com.droidvna.app.ui.sheets.ExportSheet
 import com.droidvna.app.ui.sheets.SweepSettingsSheet
@@ -127,5 +128,6 @@ fun DroidVnaApp(vm: MainViewModel) {
     ExportSheet(vm)
     AppSettingsSheet(vm)
     TraceSettingsSheet(vm)
+    AnalysisSheet(vm)
     }
 }

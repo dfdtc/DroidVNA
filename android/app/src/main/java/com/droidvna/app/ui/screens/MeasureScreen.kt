@@ -77,6 +77,7 @@ import com.droidvna.app.ui.AppOverflowMenu
 import com.droidvna.app.ui.chart.ChartMode
 import com.droidvna.app.ui.chart.VnaChart
 import com.droidvna.app.ui.chart.color
+import com.droidvna.app.ui.components.AnalysisMenuButton
 import com.droidvna.app.ui.components.ChoiceChip
 import com.droidvna.app.ui.components.CollapseToggle
 import com.droidvna.app.ui.components.ConnectionPill
@@ -420,6 +421,7 @@ private fun MeasureHeader(
                 OutlineButton("峰值", onClick = vm::peakMarker)
                 OutlineButton("谷值", onClick = vm::valleyMarker)
                 OutlineButton("清除", onClick = vm::clearMarkers)
+                AnalysisMenuButton(vm)
             }
         } else {
             Row(
@@ -520,6 +522,7 @@ private fun MarkerBar(
                 OutlineButton("峰值", onClick = vm::peakMarker)
                 OutlineButton("谷值", onClick = vm::valleyMarker)
                 ChoiceChip("Δ", delta) { vm.deltaMarkers.value = !delta }
+                AnalysisMenuButton(vm)
             }
             if (delta && markers.size >= 2 && sweep != null) {
                 Spacer(Modifier.height(6.dp))
@@ -785,6 +788,7 @@ private fun TraceCard(vm: MainViewModel, config: SweepConfig, enabled: Set<SPara
             OutlineButton("峰值", onClick = vm::peakMarker)
             OutlineButton("谷值", onClick = vm::valleyMarker)
             OutlineButton("清除", onClick = vm::clearMarkers)
+            AnalysisMenuButton(vm)
         }
     }
 }

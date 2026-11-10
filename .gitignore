@@ -25,6 +25,7 @@ local.properties
 /dist/*.apk
 !/dist/DroidVNA-0.6.0-release.apk
 !/dist/DroidVNA-0.7.0-beta-release.apk
+!/dist/DroidVNA-0.7.1-beta-release.apk
 *.aab
 
 # ---------------------------------------------------------------------------

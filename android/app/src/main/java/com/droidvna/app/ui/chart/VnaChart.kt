@@ -913,7 +913,7 @@ private fun logTicks(minValue: Double, maxValue: Double): List<Double> {
     return ticks
 }
 
-private fun niceTicks(minValue: Double, maxValue: Double, count: Int): List<Double> {
+internal fun niceTicks(minValue: Double, maxValue: Double, count: Int): List<Double> {
     if (!minValue.isFinite() || !maxValue.isFinite() || maxValue <= minValue) return listOf(minValue)
     val span = maxValue - minValue
     val raw = span / count.coerceAtLeast(1)
@@ -1393,7 +1393,7 @@ private fun DrawScope.drawWatermark(plot: Rect, density: Density) {
     drawTextAt("TOUCH VECTOR NETWORK ANALYZER", cx, subtitleBaseline, subtitle, alignCenter = true)
 }
 
-private fun textPaint(color: Color, sizeSp: Float, density: Density): android.graphics.Paint {
+internal fun textPaint(color: Color, sizeSp: Float, density: Density): android.graphics.Paint {
     return android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
         this.color = color.toArgb()
         textSize = with(density) { sizeSp.sp.toPx() }
@@ -1401,7 +1401,7 @@ private fun textPaint(color: Color, sizeSp: Float, density: Density): android.gr
     }
 }
 
-private fun DrawScope.drawTextAt(
+internal fun DrawScope.drawTextAt(
     text: String,
     x: Float,
     y: Float,

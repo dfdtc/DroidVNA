@@ -27,6 +27,7 @@ DroidVNA 的文档按用途分开放置，README 只保留项目展示与声明�
 | 文档 | 内容 |
 | --- | --- |
 | [更新日志](../CHANGELOG.md) | 按版本汇总的变更（Keep a Changelog 格式） |
+| [0.7.1-beta](release-notes/0.7.1-beta.md) | 标记分析：带宽搜索、XdB 搜索、DTF 故障距离 |
 | [0.7.0-beta](release-notes/0.7.0-beta.md) | 完整 12 项 SOLT、隔离补测、未校准频段提示 |
 | [0.6.0](release-notes/0.6.0.md) | Smith 圆图崩溃与缩放修复 |
 | [0.5.0](release-notes/0.5.0.md) | 界面重排、水印、可收起控件、设置与校准记忆 |

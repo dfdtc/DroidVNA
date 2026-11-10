@@ -123,6 +123,107 @@ internal object EnglishStrings {
         "X 轴按对数频率显示" to "Show the X axis on a logarithmic frequency scale",
         "更多迹线设置将在这里提供。" to "More trace settings will be available here.",
 
+        // Analysis menu (bandwidth / XdB / DTF)
+        "分析" to "Analysis",
+        "带宽搜索" to "Bandwidth search",
+        "XdB 搜索" to "XdB search",
+        "DTF" to "DTF",
+        "找 -X dB 的双侧边沿，默认 -3 dB" to "Find both -X dB edges; -3 dB by default",
+        "可选左侧 / 右侧 / 双侧" to "Left / right / both sides",
+        "时域 / 故障点距离（IFFT）" to "Time domain / fault distance (IFFT)",
+        "在指定迹线上找 -X dB 的两个边沿（默认 -3 dB）" to
+            "Find both -X dB edges on the selected trace (-3 dB by default)",
+        "按左侧 / 右侧 / 双侧搜索参考电平以下的 -X dB 点" to
+            "Search -X dB below the reference on the left, right or both sides",
+        "选择要分析的 S 参数迹线；使用当前扫描数据的快照。" to
+            "Choose the S-parameter trace to analyse; the current sweep snapshot is used.",
+        "游标" to "Cursor",
+        "以所选迹线的最高点作为 0 dB 参考。" to
+            "Use the highest point of the selected trace as the 0 dB reference.",
+        "还没有标记。先在图表的标记行点「＋ 标记」，再回来把它选作游标。" to
+            "There are no markers yet. Tap \"+ Marker\" in the marker row first, then select it as the cursor.",
+        "以所选标记所在频点的幅度作为 0 dB 参考。" to
+            "Use the amplitude at the selected marker's frequency as the 0 dB reference.",
+        "带宽定义（-X dB）" to "Bandwidth definition (-X dB)",
+        "搜索深度（-X dB）" to "Search depth (-X dB)",
+        "相对参考下降" to "Below the reference",
+        "默认 -3 dB；交叉点在相邻采样点之间线性插值。" to
+            "Default -3 dB; crossings are linearly interpolated between adjacent samples.",
+        "带宽搜索 = XdB 搜索的双侧版本：只添加找到的两个边沿标记。" to
+            "Bandwidth search is the both-sides XdB search: only the two edge markers are added.",
+        "搜索方向" to "Search direction",
+        "单侧只添加找到的那个边沿；双侧在两侧都找到时给出带宽。" to
+            "One side adds only the edge it finds; both sides also report the bandwidth.",
+        "结果" to "Result",
+        "目标电平" to "Target level",
+        "左边沿" to "Lower edge",
+        "右边沿" to "Upper edge",
+        "未找到" to "Not found",
+        "带宽" to "Bandwidth",
+        "中心频率" to "Center frequency",
+        "新的搜索会替换上一次分析生成的标记；手动标记和自定义游标不受影响。" to
+            "A new search replaces the markers created by the previous analysis; manual markers and custom cursors are untouched.",
+        "搜索带宽并添加标记" to "Search bandwidth and add markers",
+        "搜索并添加标记" to "Search and add markers",
+        "X 必须是大于 0 的 dB 值" to "X must be a dB value greater than 0",
+        "请先在迹线上添加一个标记作为游标" to
+            "Add a marker on the trace first and use it as the cursor",
+        "当前迹线没有可用数据" to "The selected trace has no usable data",
+        "未找到 " to "No ",
+        " 交叉点" to " crossing",
+        "只找到" to "Only found ",
+        "左侧" to "Left",
+        "右侧" to "Right",
+        "双侧" to "Both sides",
+        " 个边沿" to " edge(s)",
+        "已添加 " to "Added ",
+        " · 带宽 " to " · Bandwidth ",
+        " · 中心 " to " · Center ",
+
+        // DTF sheet
+        "DTF · 故障距离" to "DTF · Fault distance",
+        "对反射迹线做加窗 IFFT，再按速度因子换算为距离" to
+            "Windowed IFFT of a reflection trace, converted to distance by the velocity factor",
+        "输入迹线" to "Input trace",
+        "DTF 使用复数反射系数（S11 / S22）。未校准时方向性和端口失配会抬高距离域底噪，建议先做 SOL 校准。" to
+            "DTF uses the complex reflection coefficient (S11 / S22). Without calibration, directivity and port mismatch raise the distance-domain noise floor; run a SOL calibration first.",
+        "计算参数" to "Calculation settings",
+        "窗函数" to "Window",
+        "矩形" to "Rectangular",
+        "速度因子 VF" to "Velocity factor VF",
+        "实心聚乙烯约 0.66，发泡聚乙烯约 0.80，空气约 1.00。" to
+            "Solid PE is about 0.66, foamed PE about 0.80 and air about 1.00.",
+        "距离插值（IFFT 补零）" to "Distance interpolation (IFFT zero-padding)",
+        "峰值门限（相对最强反射）" to "Peak threshold (relative to the strongest reflection)",
+        "缆损补偿" to "Cable loss compensation",
+        "距离上限" to "Distance limit",
+        "距离上限留空 = 显示完整无模糊距离。缆损按往返 2×距离 补偿，仅影响显示幅度。" to
+            "Leave the distance limit empty to show the full unambiguous range. Cable loss is compensated over the round trip; it only affects the displayed amplitude.",
+        "速度因子必须在 0–1 之间" to "The velocity factor must be between 0 and 1",
+        "缆损必须是非负数" to "Cable loss must not be negative",
+        "距离上限必须是正数" to "The distance limit must be positive",
+        "计算中…" to "Calculating…",
+        "计算 DTF" to "Compute DTF",
+        "计算使用当前迹线快照；扫描或校准改变后请重新计算。" to
+            "The computation uses the current trace snapshot; recompute after the sweep or calibration changes.",
+        "DTF 计算失败：迹线点数不足或频率范围无效" to
+            "DTF failed: not enough trace points or an invalid frequency range",
+        "距离域响应" to "Distance-domain response",
+        "最大距离" to "Max distance",
+        "分辨率" to "Resolution",
+        "基于 " to "Based on ",
+        " 个扫描点" to " sweep points",
+        " 窗" to " window",
+        "横轴：故障距离 · 纵轴：相对幅度（0 dB = 最强反射）" to
+            "X: fault distance · Y: relative amplitude (0 dB = strongest reflection)",
+        "距离域为循环卷积：最远端是 0 m 响应的卷绕区，故障表已排除该区域。" to
+            "The distance domain is circular: the far edge is the wrap of the 0 m response and is excluded from the fault table.",
+        "故障点" to "Faults",
+        "没有高于门限的反射点。可以降低峰值门限，或提高扫描点数 / 带宽后重试。" to
+            "No reflection is above the threshold. Lower the peak threshold, or increase the sweep points / span and try again.",
+        "F 编号与上方曲线上的标记对应；按距离从近到远排列。" to
+            "The F numbers match the markers on the curve above; they are ordered from near to far.",
+
         // Device
         "连接中" to "Connecting",
         "连接错误" to "Connection error",

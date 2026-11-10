@@ -27,6 +27,10 @@ This guide covers installing DroidVNA, connecting a device, touch gestures, UI s
   - dB, phase, VSWR, and Smith chart display modes
   - Trace settings can enable a **log frequency axis**, with 1-2-5 logarithmic ticks on X
 - **Markers**: add, drag, and delete freely; peak/valley search; dual-marker Δ difference.
+- **Analysis**: the "Analysis ▾" menu next to the marker row provides three tools.
+  - **Bandwidth search**: use the peak or a custom cursor (an existing marker) on the selected S-parameter trace as the reference, find both edges at -X dB (default -3 dB), and add the two edge markers.
+  - **XdB search**: the general form of bandwidth search, with a choice of left, right, or both sides; bandwidth search is the both-sides XdB search.
+  - **DTF (time domain / distance to fault)**: windowed IFFT of the S11 / S22 complex reflection, converted to fault distance using the velocity factor; configure the window, velocity factor, IFFT zero-padding, peak threshold, and cable-loss compensation, and get a distance-domain trace plus a fault table.
 
 ### UI and interaction
 
@@ -59,16 +63,17 @@ This guide covers installing DroidVNA, connecting a device, touch gestures, UI s
 
 ## Installation
 
-Prebuilt release APK (in the repository): [dist/DroidVNA-0.7.0-beta-release.apk](../../dist/DroidVNA-0.7.0-beta-release.apk)
+Prebuilt release APK (in the repository): [dist/DroidVNA-0.7.1-beta-release.apk](../../dist/DroidVNA-0.7.1-beta-release.apk)
 
 ```
-dist/DroidVNA-0.7.0-beta-release.apk
-size: 13,160,344 bytes
-SHA-256: 0D05C1087175DFBB93F43BC606D313079F6902E19C15089F39AC35ED6AC069EC
+dist/DroidVNA-0.7.1-beta-release.apk
+size: 13,225,872 bytes
+SHA-256: F8C80D0FC10E093E94503C29A5E71A44F6B671E28E61C56E89A37DDBFD190500
+version: 0.7.1-beta (versionCode 10)
 ```
 
 ```bash
-adb install -r dist/DroidVNA-0.7.0-beta-release.apk
+adb install -r dist/DroidVNA-0.7.1-beta-release.apk
 ```
 
 You can also download the same version from the repository's **Releases** page. The APK is a release build signed with the project release key (certificate CN=Houran CHEN); re-signing with a different keystore prevents in-place upgrades, so uninstall first. See [Releasing](RELEASING.md) for the signing flow.
@@ -115,6 +120,7 @@ This app automatically performs an SA → VNA mode reset **before every sweep co
 - **FIT** (top-right of the chart): restore the full span / auto Y-axis.
 - **Double-tap**: also resets the view.
 - **Markers**: "+ Marker" in the side panel adds a marker at the center of the span; "Peak"/"Valley" search automatically; the × on a marker card deletes it.
+- **Analysis**: "Analysis ▾" in the marker row opens bandwidth search / XdB search / DTF; a new analysis replaces the markers created by the previous analysis and leaves manual markers untouched.
 - **Pause**: the large button at the top/side pauses or resumes continuous sweeping; "Single" triggers one standby sweep.
 - **Y axis**: `Y auto` / `Y manual` in the control row toggles auto and manual scaling; after manual pinch-zoom, one tap restores auto.
 - **Traces**: trace-parameter chips in the control row toggle S11/S21/S12/S22; the mode chip switches dB/Phase/VSWR/Smith.

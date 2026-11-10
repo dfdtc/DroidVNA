@@ -11,7 +11,7 @@ Linux/macOS 下把 `\` 换成 `/`、`.\gradlew.bat` 换成 `./gradlew` 即可。
 修改 `android/app/build.gradle.kts`：
 
 ```kotlin
-versionCode = 10         // 每次发布 +1，不能回退（0.7.0-beta 为 9）
+versionCode = 11         // 每次发布 +1，不能回退（0.7.1-beta 为 10）
 versionName = "0.8.0"    // 展示给用户的版本
 ```
 

@@ -27,6 +27,10 @@
   - dB、相位、VSWR、Smith 圆图四种显示
   - 迹线设置中可切换**对数频率轴**，X 轴按 1-2-5 对数刻度显示
 - **标记**：任意添加、拖动、删除；峰值/谷值搜索；双标记 Δ 差值。
+- **分析**：标记行旁的「分析 ▾」菜单提供三个功能。
+  - **带宽搜索**：在指定 S 参数迹线上以峰值或自定义游标为参考，按用户定义的 -X dB（默认 -3 dB）找到两个边沿，并把带宽边沿标记加到图上。
+  - **XdB 搜索**：带宽搜索的通用版本，可选择只在参考的左侧、右侧或双侧搜索；带宽搜索就是双侧 XdB 搜索。
+  - **DTF（时域 / 故障距离）**：对 S11 / S22 复数反射做加窗 IFFT，按速度因子把回波时延换算成故障点距离；可设置窗函数、速度因子、IFFT 补零倍数、峰值门限和缆损补偿，结果给出距离域曲线和故障点列表。
 
 ### 界面与交互
 
@@ -59,16 +63,17 @@
 
 ## 安装
 
-已构建的 release APK（仓库内）：[dist/DroidVNA-0.7.0-beta-release.apk](../dist/DroidVNA-0.7.0-beta-release.apk)
+已构建的 release APK（仓库内）：[dist/DroidVNA-0.7.1-beta-release.apk](../dist/DroidVNA-0.7.1-beta-release.apk)
 
 ```
-dist/DroidVNA-0.7.0-beta-release.apk
-大小: 13,160,344 字节
-SHA-256: 0D05C1087175DFBB93F43BC606D313079F6902E19C15089F39AC35ED6AC069EC
+dist/DroidVNA-0.7.1-beta-release.apk
+大小: 13,225,872 字节
+SHA-256: F8C80D0FC10E093E94503C29A5E71A44F6B671E28E61C56E89A37DDBFD190500
+版本: 0.7.1-beta (versionCode 10)
 ```
 
 ```bash
-adb install -r dist/DroidVNA-0.7.0-beta-release.apk
+adb install -r dist/DroidVNA-0.7.1-beta-release.apk
 ```
 
 也可以从仓库的 **Releases** 页面下载同一版本。该 APK 是 release 构建，使用项目发布密钥签署（证书 CN=Houran CHEN）；换用别的 keystore 重新签名后无法覆盖安装，只能先卸载。签名流程见 [发布流程](RELEASING.md)。
@@ -115,6 +120,7 @@ B60（VNB-60，FW 1.8.6，HW 0xD0）有一个已知的固件行为：连接后�
 - **FIT**（图表右上角）：恢复全带宽/自动纵轴。
 - **双击**：也可重置视图。
 - **标记**：侧栏「＋ 标记」在带宽中心加标记；「峰值」「谷值」自动搜索；标记卡片上的 × 删除。
+- **分析**：标记行的「分析 ▾」打开带宽搜索 / XdB 搜索 / DTF；新的分析会替换上一次分析生成的标记，手动标记不受影响。
 - **暂停**：右上/侧栏的大按钮暂停或恢复连续扫描；「单次」触发一次 standby 扫描。
 - **Y 轴**：控件行的 `Y 自动` / `Y 手动` 切换自动与手动缩放；手动捏合缩放后点一下即可恢复自动。
 - **迹线**：控件行的迹线参数 chip 直接开关 S11/S21/S12/S22，模式 chip 切换 dB/Phase/VSWR/Smith。

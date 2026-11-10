@@ -85,6 +85,28 @@ class EnglishStringsTest {
     }
 
     @Test
+    fun analysisLabelsAreTranslated() {
+        val samples = listOf(
+            "分析",
+            "带宽搜索",
+            "XdB 搜索",
+            "时域 / 故障点距离（IFFT）",
+            "带宽搜索 = XdB 搜索的双侧版本：只添加找到的两个边沿标记。",
+            "DTF 使用复数反射系数（S11 / S22）。未校准时方向性和端口失配会抬高距离域底噪，建议先做 SOL 校准。",
+            "没有高于门限的反射点。可以降低峰值门限，或提高扫描点数 / 带宽后重试。",
+            "只找到左侧 1 个边沿（-3.0 dB）",
+            "已添加 2 个标记 · 带宽 300.0000 MHz · 中心 2.4500 GHz",
+            "未找到 -3.0 dB 交叉点",
+            "基于 S11 · 401 个扫描点 · Hann 窗 · VF 0.66",
+        )
+        for (sample in samples) {
+            assertTranslated(sample)
+        }
+        assertEquals("Analysis", en("分析"))
+        assertEquals("Bandwidth", en("带宽"))
+    }
+
+    @Test
     fun chineseModeReturnsInputUnchanged() {
         val sample = "校准已启用 · 12 项 SOLT"
         assertEquals(sample, translate(sample, AppLanguage.CHINESE))
