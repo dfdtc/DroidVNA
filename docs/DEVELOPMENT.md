@@ -112,10 +112,16 @@ dist/                            预构建 APK
   - `0x81` IN 数据
   - `0x82` IN 设备日志
 - 帧：`0x5A | uint16 length LE | uint8 type | payload | uint32 CRC32`；VNADatapoint 的 CRC 为 0。
-- `SweepSettings` 31 字节 packed C 结构，bitfield 按 LSB 排列：
+- `SweepSettings` 32 字节 packed C 结构（VNB-60；上游 LibreVNA 为 31 字节），bitfield 按 LSB 排列：
   - standby / syncMaster / suppressPeaks / fixedPower / logSweep / syncMode
   - stages、port1Stage…port4Stage
   - 起止频率、点数、IFBW、起止功率、dwell
+  - offset 31：`extTrigger`（Harogic 扩展；`0` = 自由连续扫描，非 0 = 每个点等待 N 次触发事件）。
+    **必须显式发送**：固件把包拷进一个共享复用的接收缓冲区，只覆盖实际收到的字节，所以只发 31 字节
+    会让该字节沿用上一个包的残留值，残留非 0 时设备等着触发、看起来像卡死（`0` 正常、`1` 约 11 点、
+    `0xFF` 完全无数据）。见 `Protocol.SweepSettings` 的 KDoc。
+- 外触发尚未实现：`extTrigger` 恒为 0；`SetTrigger`(28) / `ClearTrigger`(29) 只保留包号，等 Harogic
+  给出非 0 值的定义后再实现（对应 `Protocol.Type` 与 `Protocol.SweepSettings.extTrigger`）。
 - 一个 `VNADatapoint` 可能包含该点的所有 stage；每个 stage 有 P1、P2、Ref 三个复数，descriptor 低 5 位为接收机 mask（bit0 P1、bit1 P2、bit4 Ref），高 3 位为 stage。
 - 设备 VID/PID：LibreVNA `0483:564E`、`0483:4121`、`1209:4121`；Harogic B60 `367F:0200`（设备产品字符串 `B60`）；LibreCAL / ECB-60 电子校准件 `1209:4122`（SCPI 在 interface 2，vendor class 0xFF，bulk 0x03/0x83）。
 - LibreVNA-GUI 的 USB VNA 驱动实际只有 LibreVNA（含 V1/P2/PT）和 Harogic B60 两种；`SNA5000A`、`SSA3000X` 是 TCP/SCPI 仪器而非 USB VNA，本应用暂未实现。

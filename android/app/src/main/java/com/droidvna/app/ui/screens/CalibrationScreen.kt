@@ -313,7 +313,7 @@ fun CalibrationScreen(vm: MainViewModel) {
                     )
                 }
                 Text(
-                    "提示：B60 每次切换标准会执行 SA→VNA 复位，单步约多 1 秒；完整 2 端口 SOLT（含隔离）通常需要 15–25 秒。",
+                    "提示：B60 每次切换标准都会重新下发扫描配置（约 0.5 秒）；完整 2 端口 SOLT（含隔离）通常需要 15–25 秒。",
                     color = VnaTextMuted,
                     fontSize = 10.sp,
                     modifier = Modifier.padding(top = 8.dp),

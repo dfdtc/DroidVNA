@@ -30,7 +30,7 @@ DroidVNA is a touch-first, native Android USB host client for LibreVNA and Harog
 - **数据导出**：Touchstone `.s2p` / `.s1p` 与 CSV，保存到 `Download/DroidVNA`，也可通过系统分享发送。
 - **触屏界面**：右上角 `⋮` 统一菜单、可收起控件行、横屏竖排采集栏、背景水印；扫描参数、标记、图表模式和界面语言自动记忆。
 - **中英双语**：跟随系统 / 中文 / English 即时切换并持久化。
-- **即插即用**：识别 LibreVNA V1 / P2 / PT 与 Harogic B60（LibreVNA USB 协议 v14），提供 USB 诊断与设备日志；B60 FW 1.8.6 的首次配置问题可自动恢复。
+- **即插即用**：识别 LibreVNA V1 / P2 / PT 与 Harogic B60（LibreVNA USB 协议 v14），提供 USB 诊断与设备日志；B60 固定发送 32 字节 `SweepSettings`（含 `extTrigger` 扩展字节），配置无响应时会自动重发。
 - **演示模式**：内置 1.75–2.65 GHz 带通滤波器 DUT 和真实误差模型，没有硬件也能完整走通校准与导出。
 
 完整功能与操作说明见 [使用指南](docs/USER-GUIDE.md)。

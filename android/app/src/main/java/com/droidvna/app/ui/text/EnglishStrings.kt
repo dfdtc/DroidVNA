@@ -252,6 +252,7 @@ internal object EnglishStrings {
         "MCU 温度" to "MCU temperature",
         "第二温度" to "Secondary temp",
         "供电" to "Supply",
+        "电流" to "Current",
         "参考" to "Reference",
         "外部" to "External",
         "内部" to "Internal",
@@ -295,8 +296,8 @@ internal object EnglishStrings {
         "开始电子校准" to "Start E-Cal calibration",
         "系数已加载，可以开始 SOLT。校准期间请勿拔插设备。" to "Coefficients loaded. You can start SOLT; do not unplug the device during calibration.",
         "断开电子校准件" to "Disconnect E-Cal",
-        "提示：B60 每次切换标准会执行 SA→VNA 复位，单步约多 1 秒；整个 2 端口 SOLT 通常需要 10–20 秒。" to
-            "Note: the B60 performs an SA→VNA reset for each standard, adding about 1 s per step; a full 2-port SOLT usually takes 10-20 s.",
+        "提示：B60 每次切换标准都会重新下发扫描配置（约 0.5 秒）；整个 2 端口 SOLT 通常需要 10–20 秒。" to
+            "Note: the B60 re-sends its sweep configuration for each standard (about 0.5 s); a full 2-port SOLT usually takes 10-20 s.",
         "依次连接 Open / Short / Load 三个标准件，测量后计算方向性、源匹配与反射跟踪误差。校准会按频率保存，并应用到之后的所有扫描。" to
             "Connect Open / Short / Load in turn. The app measures each standard, computes directivity, source match and reflection tracking, then saves the calibration by frequency and applies it to subsequent sweeps.",
         "单端口扫描（S22 不可用）" to "1-port sweep (S22 unavailable)",
@@ -438,10 +439,9 @@ internal object EnglishStrings {
             "USB access denied. Allow access to this USB device in the system prompt.",
         "USB 连接失败: " to "USB connection failed: ",
         "Demo 启动失败: " to "Demo start failed: ",
-        "B60: SA → VNA 模式复位…" to "B60: SA → VNA mode reset…",
-        "B60: 扫描未启动，执行 SA 模式复位…" to "B60: sweep did not start; performing SA mode reset…",
-        "B60 自动恢复失败：请重新插拔设备，或先切到 SA 模式再切回 VNA" to
-            "B60 auto-recovery failed: replug the device, or switch to SA mode and back to VNA",
+        "B60: 扫描未启动，重发扫描配置…" to "B60: sweep did not start; re-sending the sweep configuration…",
+        "B60 自动恢复失败：请重新插拔设备后重连" to
+            "B60 auto-recovery failed: replug the device and reconnect",
         "设备没有回复 DeviceInfo（固件协议不匹配？）" to "Device did not reply to DeviceInfo (firmware protocol mismatch?)",
         "设备缺少 LibreVNA 所需的 bulk 端点" to "Device is missing the bulk endpoints required by LibreVNA",
         "无法占用 USB 接口 0（可能被其他应用占用）" to "Unable to claim USB interface 0 (it may be in use by another app)",
@@ -643,8 +643,8 @@ internal object EnglishStrings {
             "On: the calibration ends with both ports switched to LOAD to measure isolation (a few extra seconds)",
         "默认关闭：ECB-60 等双端口校准件的隔离通路较差，建议之后用机械 50 Ω 负载单独补测" to
             "Off by default: 2-port E-Cal kits such as the ECB-60 have poor isolation paths; measure isolation later with mechanical 50 Ω loads instead",
-        "提示：B60 每次切换标准会执行 SA→VNA 复位，单步约多 1 秒；完整 2 端口 SOLT（含隔离）通常需要 15–25 秒。" to
-            "Note: on the B60 every standard switch performs an SA→VNA reset, adding about 1 s per step; a full 2-port SOLT (with isolation) usually takes 15–25 s.",
+        "提示：B60 每次切换标准都会重新下发扫描配置（约 0.5 秒）；完整 2 端口 SOLT（含隔离）通常需要 15–25 秒。" to
+            "Note: the B60 re-sends its sweep configuration for each standard (about 0.5 s); a full 2-port SOLT (with isolation) usually takes 15–25 s.",
         "将 Port 1 与 Port 2 直连后捕获一次 THRU，按「实测 / 理想」归一化 S21 / S12：消除跟踪误差，但不扣除端口失配。" to
             "Connect Port 1 to Port 2 and capture THRU once. S21 / S12 are normalized as measured / ideal: this removes tracking error but not port mismatch.",
         "THRU 延迟为 0 时理想直通为 1，即传统 0 dB 归一化；填了延迟就会把相位一并计入。" to

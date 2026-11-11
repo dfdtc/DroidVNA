@@ -24,6 +24,7 @@ import com.droidvna.app.model.SoltMath
 import com.droidvna.app.model.SweepConfig
 import com.droidvna.app.model.SweepMerge
 import com.droidvna.app.model.SweepResult
+import com.droidvna.app.model.SweepTiming
 import com.droidvna.app.model.ThruCal
 import com.droidvna.app.model.VnaDeviceInfo
 import com.droidvna.app.model.VnaStatus
@@ -34,12 +35,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -586,14 +589,64 @@ class VnaRepository(
         return withTimeoutOrNull(timeoutMs) { rawSweeps.first() }
     }
 
-    /** Wait for a second sweep so an in-flight sweep with the old standard is not captured. */
-    private suspend fun captureSettledSweep(): SweepResult? {
-        val first = captureRawSweep(8000) ?: return null
-        val second = withTimeoutOrNull(8000) { rawSweeps.first() }
+    /**
+     * Waits for one complete sweep.
+     *
+     * [onWait] receives a progress line roughly once per second so a multi-minute sweep (low
+     * IFBW / many points) does not look like a hang. The wait itself is a single
+     * `rawSweeps.first()` subscription: polling in slices would drop emissions of slowly
+     * repeating sweeps.
+     */
+    private suspend fun awaitSweep(timeoutMs: Long, onWait: ((String) -> Unit)? = null): SweepResult? {
+        if (onWait == null) return withTimeoutOrNull(timeoutMs) { rawSweeps.first() }
+        return withTimeoutOrNull(timeoutMs) {
+            coroutineScope {
+                val ticker = launch {
+                    while (isActive) {
+                        delay(1_000)
+                        val cfg = config.value
+                        val measured = sweep.value?.measuredPoints ?: -1
+                        val shown = if (measured < 0) 0 else measured.coerceAtMost(cfg.points)
+                        onWait("已采集 " + shown + "/" + cfg.points + " 点…")
+                    }
+                }
+                try {
+                    rawSweeps.first()
+                } finally {
+                    ticker.cancel()
+                }
+            }
+        }
+    }
+
+    /**
+     * Wait for a usable sweep after a standard switch.
+     *
+     * The timeout scales with the configured sweep duration (see [SweepTiming]) instead of the
+     * old fixed 8 s, which could never capture e.g. 2001 points at 15 Hz IFBW. A second sweep is
+     * only awaited when the first one arrived suspiciously fast (it may have been in flight from
+     * before the switch); for slow sweeps one sweep is enough, so the wait is not doubled.
+     */
+    private suspend fun captureSettledSweep(onWait: ((String) -> Unit)? = null): SweepResult? {
+        val cfg = config.value
+        // A sweep already observed on this grid beats the analytic estimate: the firmware's
+        // per-point cost is not a pure function of IFBW (log sweeps add real overhead).
+        val observed = lastCompleteSweep.value
+            ?.takeIf { gridMatches(it, cfg) }
+            ?.sweepDurationNanos
+            ?: 0L
+        val timeoutMs = SweepTiming.captureTimeoutMs(cfg, observed)
+        val started = System.nanoTime()
+        val first = awaitSweep(timeoutMs, onWait) ?: return null
+        val elapsedMs = (System.nanoTime() - started) / 1_000_000
+        // Only re-wait when the sweep arrived fast enough to be a leftover from before the
+        // switch; a slow sweep (low IFBW, many points) must not be waited for twice.
+        if (!SweepTiming.needsSecondSweep(elapsedMs)) return first
+        val second = awaitSweep(timeoutMs, onWait)
         return second ?: first
     }
 
-    suspend fun captureStandard(port: Int, kind: CalStandard): SweepResult? {
+    suspend fun captureStandard(port: Int, kind: CalStandard, onWait: ((String) -> Unit)? = null): SweepResult? {
         val src = source ?: return null
         if (port == 2 && !config.value.twoPort) {
             val cfg = config.value.copy(twoPort = true, continuous = true)
@@ -610,13 +663,13 @@ class VnaRepository(
         src.prepareCalStandard(port, kind)
         addLog("Capturing " + kind.label + " on port " + port + "…")
         return try {
-            captureSettledSweep()
+            captureSettledSweep(onWait)
         } finally {
             src.clearCalPreparation()
         }
     }
 
-    suspend fun captureThru(): SweepResult? {
+    suspend fun captureThru(onWait: ((String) -> Unit)? = null): SweepResult? {
         val src = source ?: return null
         if (!config.value.twoPort) {
             val cfg = config.value.copy(twoPort = true, continuous = true)
@@ -633,7 +686,7 @@ class VnaRepository(
         src.prepareCalThru()
         addLog("Capturing THRU…")
         return try {
-            captureSettledSweep()
+            captureSettledSweep(onWait)
         } finally {
             src.clearCalPreparation()
         }
@@ -644,7 +697,7 @@ class VnaRepository(
      * S21/S12 is the crosstalk floor, which the 12-term model subtracts from every transmission
      * measurement. Without it the isolation terms are treated as zero.
      */
-    suspend fun captureIsolation(): SweepResult? {
+    suspend fun captureIsolation(onWait: ((String) -> Unit)? = null): SweepResult? {
         val src = source ?: return null
         if (!config.value.twoPort) {
             val cfg = config.value.copy(twoPort = true, continuous = true)
@@ -661,7 +714,7 @@ class VnaRepository(
         src.prepareCalIsolation()
         addLog("Capturing isolation (both ports terminated)…")
         return try {
-            captureSettledSweep()
+            captureSettledSweep(onWait)
         } finally {
             src.clearCalPreparation()
         }

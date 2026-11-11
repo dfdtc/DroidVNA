@@ -36,7 +36,9 @@ Limitation: if the `.cal` contains only 1-port measurements, the app can only re
 
 **The isolation measurement is an optional checkbox, off by default.** Enabling it spends a few more seconds at the end switching all cal ports to LOAD and measuring isolation once. It is off by default because two-port electronic kits such as the ECB-60 have inherently poor isolation paths: what they measure is often worse than isolation measured with two mechanical 50 Ω loads. In that case it is better to complete the other 11 terms with the E-Cal and then **re-measure isolation separately** with mechanical loads (see the next section).
 
-Note: when the temperature is not stable the app waits up to 90 seconds; on the B60 every standard switch performs an SA→VNA reset, so the whole procedure takes longer than on the desktop. Port state is verified with `:PORT?` every time, and the coefficient stream must be complete; otherwise the app aborts or falls back to point-by-point reading, avoiding truncated coefficients that would produce "spurious" calibrations.
+Note: when the temperature is not stable the app waits up to 90 seconds; on the B60 every standard switch re-sends the sweep configuration (about 0.5 s, with no SA mode switch). Port state is verified with `:PORT?` every time, and the coefficient stream must be complete; otherwise the app aborts or falls back to point-by-point reading, avoiding truncated coefficients that would produce "spurious" calibrations.
+
+**E-Cal uses the current sweep settings.** Every standard waits for at least one complete sweep, so low IFBW / many points make the whole run much longer (15 Hz + 2001 points is roughly 2–7 minutes per sweep). The capture timeout now scales with points and IFBW (about two sweep periods) and the panel shows "已采集 x/2001 点…" every second, so low-bandwidth settings no longer produce a false "port X has no scan data". For a quick calibration use 30–75 kHz and 401 points, then restore your settings.
 
 **E-Cal on real hardware (ECB-60, FW 0.3.2; FACTORY coefficients loaded and calibration flow):**
 

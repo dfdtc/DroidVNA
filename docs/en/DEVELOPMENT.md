@@ -112,10 +112,19 @@ dist/                            Prebuilt APKs
   - `0x81` IN data
   - `0x82` IN device log
 - Frame: `0x5A | uint16 length LE | uint8 type | payload | uint32 CRC32`; the VNADatapoint CRC is 0.
-- `SweepSettings` is a 31-byte packed C struct with bitfields in LSB order:
+- `SweepSettings` is a **32-byte** packed C struct on the VNB-60 (31 bytes upstream) with bitfields in LSB order:
   - standby / syncMaster / suppressPeaks / fixedPower / logSweep / syncMode
   - stages, port1Stage…port4Stage
   - start/stop frequency, points, IFBW, start/stop power, dwell
+  - offset 31: `extTrigger` (Harogic extension; `0` = free-running continuous sweep, non-zero = wait
+    for N trigger events per point). It **must be sent explicitly**: the firmware decodes into a
+    shared, reused receive buffer and only overwrites the bytes actually received, so a 31-byte
+    packet lets this byte keep the previous packet's value. A non-zero residue makes the device wait
+    for triggers and looks hung (`0` normal, `1` about 11 points, `0xFF` no data at all). See the
+    `Protocol.SweepSettings` KDoc.
+- External triggering is not implemented yet: `extTrigger` is always 0 and `SetTrigger` (28) /
+  `ClearTrigger` (29) only reserve the packet numbers until Harogic defines non-zero values
+  (`Protocol.Type`, `Protocol.SweepSettings.extTrigger`).
 - A `VNADatapoint` can contain every stage for that point; each stage has P1, P2, and Ref complex values. The descriptor's low 5 bits are the receiver mask (bit0 P1, bit1 P2, bit4 Ref) and the high 3 bits are the stage.
 - Device VID/PID: LibreVNA `0483:564E`, `0483:4121`, `1209:4121`; Harogic B60 `367F:0200` (product string `B60`); LibreCAL / ECB-60 E-Cal `1209:4122` (SCPI on interface 2, vendor class 0xFF, bulk 0x03/0x83).
 - LibreVNA-GUI's USB VNA driver really only supports LibreVNA (including V1/P2/PT) and Harogic B60; `SNA5000A` and `SSA3000X` are TCP/SCPI instruments, not USB VNAs, and are not implemented here.

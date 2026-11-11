@@ -31,8 +31,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.io.IOException
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 
 class UsbVnaSource private constructor(
     private val link: VnaUsbLink,
@@ -85,17 +83,14 @@ class UsbVnaSource private constructor(
         version++
         lastDataVersion = -1
         assembler = SweepAssembler(config, onSweep = { _sweeps.tryEmit(it) }, onPartial = { _sweeps.tryEmit(it) })
-        val bytes = Protocol.encodeSweepSettings(config, standby)
-        Log.d("VnaB60", "start points=" + config.points + " ifbw=" + config.ifbwHz + " twoPort=" + config.twoPort)
-        // VNB-60 firmware 1.8.6 often ignores the first VNA configuration after connecting,
-        // and can remain in a slow/invalid sweep state after a low-IFBW sweep. The documented
-        // workaround is to enter SA mode once and return to VNA. Apply it for every B60
-        // configuration change: it costs well under a second and makes IFBW changes reliable.
-        if (isB60) {
-            emitLog("B60: SA → VNA 模式复位…")
-            link.send(Type.SPECTRUM_ANALYZER_SETTINGS, saPayload(), awaitAck = true, timeoutMs = 2000)
-            delay(300)
-        }
+        // Always send the complete 32-byte SweepSettings. The last byte is the Harogic
+        // extTrigger extension: if it is left out, the VNB-60 firmware keeps whatever value a
+        // previous packet left in its shared receive buffer and then waits for that many
+        // trigger events per point (residue 0xFF => no data at all). External triggering is
+        // not implemented, so the byte is sent explicitly as 0.
+        val settings = SweepSettings.fromConfig(config, standby)
+        val bytes = settings.encode()
+        Log.d("VnaB60", "start " + settings)
         // Abort a possibly running sweep first.
         link.send(Type.SET_IDLE, ByteArray(0), awaitAck = true, timeoutMs = 1000)
         if (isB60) {
@@ -115,58 +110,42 @@ class UsbVnaSource private constructor(
         if (!ok) {
             assembler = null
         } else if (isB60 && !standby) {
-            startB60Watchdog(config, bytes)
+            startB60Watchdog(bytes)
         }
         return ok
     }
 
     /**
-     * VNB-60 firmware 1.8.6 sometimes accepts the first SweepSettings but never starts the
-     * sweep; the firmware times out after ~2 s and reinitializes. The desktop GUI workaround is
-     * to switch to SA mode and back, or to reconnect. This watchdog performs that recovery
-     * asynchronously: idle + re-send, then (if needed) a short SA-mode reset.
+     * Recovery for a B60 configuration that was acknowledged but produces no data.
+     *
+     * This used to be an "SA mode" reset, which was a misdiagnosis: switching modes only
+     * helped because the mode switch happened to overwrite the firmware's shared receive
+     * buffer, and with an extTrigger residue it worked only by coincidence. Now that the
+     * 32-byte SweepSettings is always sent the residue is gone, so recovery just means
+     * re-sending the very same configuration instead of pretending to switch modes.
+     *
+     * Nothing happens while datapoints arrive; a normal sweep delivers its first usable
+     * point within milliseconds even at the lowest IFBW, so the wait is not scaled by IFBW.
      */
-    private fun startB60Watchdog(config: SweepConfig, bytes: ByteArray) {
+    private fun startB60Watchdog(payload: ByteArray) {
         val v0 = version
-        // The firmware bug produces no usable datapoints at all, while a working sweep
-        // delivers its first usable point within about a second even at 15 Hz IFBW. A
-        // shorter fixed window avoids aborting a slow low-IFBW sweep with a false SA reset.
-        val watchdogDelayMs = 8_000L
         watchdogJob = scope.launch {
-            delay(watchdogDelayMs)
-            if (!isActive) return@launch
-            if (lastDataVersion == v0) return@launch
-            emitLog("B60: 扫描未启动，执行 SA 模式复位…")
-            Log.d("VnaB60", "watchdog: SA reset")
-            link.send(Type.SPECTRUM_ANALYZER_SETTINGS, saPayload(), awaitAck = true, timeoutMs = 2000)
-            delay(400)
-            link.send(Type.SET_IDLE, ByteArray(0), awaitAck = true, timeoutMs = 1000)
-            delay(300)
-            if (!isActive) return@launch
-            version++
-            val v1 = version
-            assembler = SweepAssembler(config, onSweep = { _sweeps.tryEmit(it) }, onPartial = { _sweeps.tryEmit(it) })
-            val ok = link.send(Type.SWEEP_SETTINGS, bytes, awaitAck = true, timeoutMs = 4000)
-            lastDataVersion = -1
-            Log.d("VnaB60", "watchdog reconfigure=" + ok)
-            delay(3000)
-            if (isActive && lastDataVersion != v1) {
-                emitLog("B60 自动恢复失败：请重新插拔设备，或先切到 SA 模式再切回 VNA")
+            repeat(B60_RECONFIGURE_ATTEMPTS) { attempt ->
+                delay(B60_WATCHDOG_MS)
+                if (!isActive) return@launch
+                if (lastDataVersion == v0) return@launch
+                emitLog("B60: 扫描未启动，重发扫描配置…")
+                Log.d("VnaB60", "watchdog: resend sweep settings (" + (attempt + 1) + "/" + B60_RECONFIGURE_ATTEMPTS + ")")
+                link.send(Type.SET_IDLE, ByteArray(0), awaitAck = true, timeoutMs = 1000)
+                delay(300)
+                if (!isActive) return@launch
+                val ok = link.send(Type.SWEEP_SETTINGS, payload, awaitAck = true, timeoutMs = 4000)
+                Log.d("VnaB60", "watchdog reconfigure=" + ok)
+            }
+            if (isActive && lastDataVersion != v0) {
+                emitLog("B60 自动恢复失败：请重新插拔设备后重连")
             }
         }
-    }
-
-    private fun saPayload(): ByteArray {
-        val bb = ByteBuffer.allocate(34).order(ByteOrder.LITTLE_ENDIAN)
-        bb.putLong(500_000_000L)
-        bb.putLong(501_000_000L)
-        bb.putInt(10_000)
-        bb.putShort(10)
-        bb.put(0x80.toByte()) // applyReceiverCorrection
-        bb.put(0) // tracking generator / sync bits
-        bb.putLong(0)
-        bb.putShort(0)
-        return bb.array()
     }
 
     override suspend fun initiate(): Boolean = link.send(Type.INITIATE_SWEEP, ByteArray(0), true, 4000)
@@ -187,6 +166,12 @@ class UsbVnaSource private constructor(
     }
 
     companion object {
+        /** How long a B60 configuration may stay silent before it is re-sent. */
+        private const val B60_WATCHDOG_MS = 6_000L
+
+        /** Number of times a silent B60 configuration is re-sent before giving up. */
+        private const val B60_RECONFIGURE_ATTEMPTS = 2
+
         suspend fun open(context: Context, device: UsbDevice): UsbVnaSource {
             val manager = context.getSystemService(Context.USB_SERVICE) as UsbManager
             val connection = manager.openDevice(device) ?: throw IOException("无法打开 USB 设备（权限或占用问题）")

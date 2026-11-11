@@ -221,7 +221,15 @@ data class VnaStatus(
     val extRefInUse: Boolean? = null,
     val secondaryTemperatureC: Double? = null,
     val supplyVoltage: Double? = null,
+    /** Supply current in mA (the `VD0` status reports it that way). */
     val supplyCurrent: Double? = null,
+    /** Whether an external reference is available at all (status bit 0). */
+    val extRefAvailable: Boolean? = null,
+    /**
+     * Whether the device's FPGA is configured (status bit 2). On the VNB-60 this is the quickest
+     * "the device is alive and did not fall back to Idle" indicator when a sweep produces no data.
+     */
+    val fpgaConfigured: Boolean? = null,
     val updatedAtNanos: Long = System.nanoTime(),
 )
 

@@ -11,6 +11,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -69,6 +71,7 @@ import com.droidvna.app.ui.theme.VnaText
 import com.droidvna.app.ui.theme.VnaTextMuted
 import com.droidvna.app.usb.UsbVnaManager
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DeviceScreen(vm: MainViewModel) {
     val connection by vm.repo.connection.collectAsStateWithLifecycle()
@@ -173,7 +176,13 @@ fun DeviceScreen(vm: MainViewModel) {
             item { SectionLabel("实时状态") }
             item {
                 SectionCard(title = "硬件状态") {
-                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    // FlowRow: the B60 reports five status flags (FPGA, source, LO, ADC, level),
+                    // which do not fit on one line of a phone-sized screen.
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        StatusDot(status!!.fpgaConfigured, "FPGA")
                         StatusDot(status!!.sourceLocked, "源锁定")
                         StatusDot(status!!.loLocked, "LO 锁定")
                         StatusDot(status!!.adcOverload?.not(), "ADC 正常")
@@ -184,6 +193,7 @@ fun DeviceScreen(vm: MainViewModel) {
                         status!!.temperatureC?.let { Metric("MCU 温度", String.format("%.1f °C", it)) }
                         status!!.secondaryTemperatureC?.let { Metric("第二温度", String.format("%.1f °C", it)) }
                         status!!.supplyVoltage?.let { Metric("供电", String.format("%.2f V", it)) }
+                        status!!.supplyCurrent?.let { Metric("电流", String.format("%.0f mA", it)) }
                         status!!.extRefInUse?.let { Metric("参考", if (it) "外部" else "内部") }
                     }
                 }

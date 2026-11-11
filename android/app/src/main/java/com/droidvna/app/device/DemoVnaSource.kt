@@ -88,6 +88,8 @@ class DemoVnaSource : VnaSource {
             unlevel = false,
             temperatureC = 39.5,
             extRefInUse = false,
+            extRefAvailable = false,
+            fpgaConfigured = true,
         )
         if (!standby) {
             loopJob = scope.launch {
@@ -103,6 +105,8 @@ class DemoVnaSource : VnaSource {
                         unlevel = false,
                         temperatureC = 39.5 + 0.8 * sin(System.currentTimeMillis() / 20000.0),
                         extRefInUse = false,
+                        extRefAvailable = false,
+                        fpgaConfigured = true,
                     )
                     val targetMs = sweepDurationMs(currentConfig)
                     val elapsedMs = (System.nanoTime() - started) / 1_000_000

@@ -41,11 +41,14 @@ class EnglishStringsTest {
             "THRU 归一化（仅传输）",
             "隔离（可选，两端接 50 Ω 负载）",
             "完整 SOLT 需要双端口 VNA；单端口设备请使用上面的 1 端口 SOL。",
+            "电流",
+            "提示：B60 每次切换标准都会重新下发扫描配置（约 0.5 秒）；完整 2 端口 SOLT（含隔离）通常需要 15–25 秒。",
         )
         for (sample in samples) {
             assertTranslated(sample)
         }
         assertEquals("Isolation", en("隔离"))
+        assertEquals("Current", en("电流"))
         assertEquals("Compute and apply full SOLT", en("计算并应用完整 SOLT"))
         assertEquals("Saved calibration forgotten", en("已忘记保存的校准"))
         assertEquals("12-term SOLT · 1 point", en("12 项 SOLT · 1 点"))
@@ -60,6 +63,8 @@ class EnglishStringsTest {
             "各次捕获的扫描范围不一致（端口 1、THRU），请保持扫描设置不变后重做",
             "校准点数不足，请增大扫描点数后重做",
             "电子校准完成：完整 12 项 SOLT · 401 点 · 含隔离测量",
+            "B60: 扫描未启动，重发扫描配置…",
+            "B60 自动恢复失败：请重新插拔设备后重连",
         )
         for (sample in samples) {
             assertTranslated(sample)

@@ -789,8 +789,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         // Give the mechanical relays time to settle after the last switch.
                         delay(150)
                         for (p in 1..calPorts) {
-                            val sweep = repo.captureStandard(p, kind)
+                            // Low IFBW / many points make one sweep take minutes; show the point
+                            // progress instead of leaving "正在执行电子校准…" on screen.
+                            val sweep = repo.captureStandard(p, kind) { detail ->
+                                ecalMessage.value = "端口 " + p + " " + kind.label + " · " + detail
+                            }
                                 ?: throw IllegalStateException("端口 " + p + " " + kind.label + " 没有扫描数据")
+                            ecalMessage.value = "电子校准进行中…"
                             capturesByPort.getValue(p)[kind] = sweep
                             step()
                         }
@@ -846,8 +851,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             throw IllegalStateException("切换到 THROUGH 失败")
                         }
                         delay(150)
-                        val thru = repo.captureThru()
+                        val thru = repo.captureThru { detail ->
+                            ecalMessage.value = "THRU · " + detail
+                        }
                             ?: throw IllegalStateException("THRU 没有扫描数据")
+                        ecalMessage.value = "电子校准进行中…"
                         val std = ecalStandards["P12_THROUGH"]
                             ?: throw IllegalStateException("缺少 P12_THROUGH 系数")
                         if (std.freqHz.size < 2 || std.s21.size != std.freqHz.size || std.s12.size != std.freqHz.size) {
@@ -885,7 +893,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                     }
                                 }
                                 delay(150)
-                                val iso = repo.captureIsolation()
+                                val iso = repo.captureIsolation { detail ->
+                                    ecalMessage.value = "隔离检查 · " + detail
+                                }
                                 if (iso == null) {
                                     isolationProblem = "没有扫描数据"
                                 } else {

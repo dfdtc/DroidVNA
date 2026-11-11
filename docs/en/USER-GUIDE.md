@@ -102,15 +102,16 @@ Requirements:
 
 ![Harogic B60](../screenshots/b60.png)
 
-### Harogic B60 firmware 1.8.6 first-configuration issue and automatic recovery
+### Harogic B60 extTrigger residue (fixed)
 
-The B60 (VNB-60, FW 1.8.6, HW 0xD0) has a known firmware behavior: the **first VNA SweepSettings after connecting is ACKed** but the sweep does not actually start; after 2 seconds the firmware times out and re-initializes, which shows up as a status every 2 seconds in the log and 0 datapoints. The desktop LibreVNA-GUI works around it by switching to SA mode and back to VNA, or by reconnecting.
+The VNB-60's `SweepSettings` (FW 1.8.6, HW 0xD0) has one byte more than an upstream LibreVNA: byte 32 is `extTrigger` (`0` = free-running continuous sweep, non-zero = wait for that many trigger events per point). The firmware copies received packets into a **shared, reused** receive buffer and only overwrites the bytes actually received, so a 31-byte packet leaves `extTrigger` holding whatever a previous packet put there. With a non-zero residue the firmware believes it must wait for external triggers: residue `0` sweeps normally, `1` leaves about 11 points, `0xFF` returns no data at all — which looks exactly like a dead device.
 
-This app automatically performs an SA → VNA mode reset **before every sweep configuration sent to a B60** (sends a valid SA configuration frame, then SetIdle, then the VNA configuration), including on connect, after changing IFBW/points/frequency, and when resuming a sweep. Users therefore never need to switch to SA manually, and switching from low IFBW back to high IFBW does not leave the device slow. If the reset still fails, a background watchdog performs another SA reset after 8 seconds without data; if that also fails, the app suggests replugging the device in Device → Log. The timeout is 8 seconds rather than scaling with IFBW, to avoid mistaking a genuinely slow low-bandwidth sweep for a hang (the first datapoint of a normal sweep still arrives within milliseconds).
+The desktop app and earlier versions of this app "worked around" it by switching to SA mode and back to VNA, but that only helped because the mode switch happened to overwrite that area of the buffer, which is why it failed intermittently (a random "success, success, failure" cycle that re-sending the settings did not fix). The app now **always sends the complete 32-byte `SweepSettings`** with `extTrigger` explicitly zero, so nothing depends on buffer history; the SA reset logic has been removed and configuring a B60 no longer includes a pointless mode switch and its delays.
 
+If a configuration is still ACKed without producing data, the app re-sends the very same configuration after 6 seconds (up to 2 times) and only then suggests replugging the device in Device → Log. That recovery path only re-sends the sweep configuration; it never switches modes.
+
+- **External triggering is not implemented yet**: the protocol structures already reserve the `extTrigger` byte and the `SetTrigger` (28) / `ClearTrigger` (29) packet numbers, but Harogic has not defined what non-zero values mean (255 produced no output at all), so the app always sends 0.
 - The B60 defaults to **75 kHz IFBW** (spec range **15 Hz – 75 kHz**) and **401 points**; a 75 kHz continuous sweep measures about **19–20 sweeps/s**. The B60 DeviceInfo misreports 11 Hz – 93.5 kHz; the app overrides it with the specification range 15 Hz – 75 kHz.
-- This workaround only changes the device's current SA/VNA mode; it does not modify the B60's persistent DeviceConfiguration or calibration data.
-- If Harogic releases fixed firmware later, the reset logic can be removed.
 - Low IFBW (such as 1 kHz, 100 Hz, 15 Hz) significantly increases per-point integration time: both the first frame and the whole frame are slower, but the app draws as it sweeps and shows a breathing indicator next to "Acquisition", so it never looks hung.
 
 ## Touch gestures

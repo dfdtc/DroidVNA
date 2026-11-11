@@ -28,7 +28,7 @@
 - **Data export**: Touchstone `.s2p` / `.s1p` and CSV to `Download/DroidVNA`, or share through the system share sheet.
 - **Touch UI**: a single `⋮` overflow menu, collapsible control rows, a vertical acquisition rail in landscape, a background watermark; sweep settings, markers, chart mode, and UI language are remembered.
 - **Bilingual UI**: follow system / Chinese / English, applied immediately and persisted.
-- **Plug and play**: recognizes LibreVNA V1 / P2 / PT and Harogic B60 (LibreVNA USB protocol v14), with USB diagnostics and a device log; the B60 FW 1.8.6 first-configuration issue is recovered automatically.
+- **Plug and play**: recognizes LibreVNA V1 / P2 / PT and Harogic B60 (LibreVNA USB protocol v14), with USB diagnostics and a device log; the B60 always receives the full 32-byte `SweepSettings` (including the `extTrigger` extension byte), and a silent configuration is re-sent automatically.
 - **Demo mode**: a 1.75–2.65 GHz band-pass filter DUT with a realistic error model, so the full calibration and export flow works without hardware.
 
 See the [User guide](docs/en/USER-GUIDE.md) for complete features and operation.
