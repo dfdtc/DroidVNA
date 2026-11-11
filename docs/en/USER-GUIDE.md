@@ -63,17 +63,17 @@ This guide covers installing DroidVNA, connecting a device, touch gestures, UI s
 
 ## Installation
 
-Prebuilt release APK (in the repository): [dist/DroidVNA-0.7.1-beta-release.apk](../../dist/DroidVNA-0.7.1-beta-release.apk)
+Prebuilt release APK (in the repository): [dist/DroidVNA-0.7.2-beta-release.apk](../../dist/DroidVNA-0.7.2-beta-release.apk)
 
 ```
-dist/DroidVNA-0.7.1-beta-release.apk
-size: 13,225,872 bytes
-SHA-256: F8C80D0FC10E093E94503C29A5E71A44F6B671E28E61C56E89A37DDBFD190500
-version: 0.7.1-beta (versionCode 10)
+dist/DroidVNA-0.7.2-beta-release.apk
+size: 13,225,877 bytes
+SHA-256: 4A65646620BB4E835480B6D9E4E730540B34C0DACFBA6E9FCB1A6E55C0D59E39
+version: 0.7.2-beta (versionCode 11)
 ```
 
 ```bash
-adb install -r dist/DroidVNA-0.7.1-beta-release.apk
+adb install -r dist/DroidVNA-0.7.2-beta-release.apk
 ```
 
 You can also download the same version from the repository's **Releases** page. The APK is a release build signed with the project release key (certificate CN=Houran CHEN); re-signing with a different keystore prevents in-place upgrades, so uninstall first. See [Releasing](RELEASING.md) for the signing flow.

@@ -9,7 +9,7 @@ This document describes how to produce a publishable GitHub Release from the cur
 Edit `android/app/build.gradle.kts`:
 
 ```kotlin
-versionCode = 11         // increment on every release, never go backwards (0.7.1-beta is 10)
+versionCode = 12         // increment on every release, never go backwards (0.7.2-beta is 11)
 versionName = "0.8.0"    // the version shown to users
 ```
 

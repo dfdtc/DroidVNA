@@ -21,7 +21,7 @@ This document records DroidVNA's current boundaries and future direction. For pr
 
 ## Validation status
 
-The reasons the current version is marked **beta**, plus hardware validation records, are in [Testing](TESTING.md) and the [0.7.1-beta release notes](release-notes/0.7.1-beta.md).
+The reasons the current version is marked **beta**, plus hardware validation records, are in [Testing](TESTING.md) and the [0.7.2-beta release notes](release-notes/0.7.2-beta.md).
 
 ## Next steps
 

@@ -14,8 +14,8 @@
 
 ## Project status
 
-- Current version **0.7.1-beta** (versionCode 10), Android 8.0 (API 26) or newer; compileSdk / targetSdk 36.
-- 0.7.1-beta adds marker analysis tools (bandwidth search / XdB search / DTF). They are validated in demo mode and unit tests; DTF distance accuracy has not been compared against a real cable or fault yet.
+- Current version **0.7.2-beta** (versionCode 11), Android 8.0 (API 26) or newer; compileSdk / targetSdk 36.
+- 0.7.2-beta fixes protocol and calibration reliability: the B60 `SweepSettings` is always sent as 32 bytes (including the `extTrigger` extension byte), the SA reset workaround is gone, and E-Cal capture timeouts scale with the sweep time. The 0.7.1 analysis tools are unchanged.
 - The 12-term SOLT E-Cal flow has been run end-to-end on real hardware (Harogic B60 + ECB-60) and applied successfully, but **absolute accuracy has not been compared against the desktop app or a known DUT**, and the **manual SOLT flow has not been tested on hardware** yet (mechanical standards are missing). This is why the release is marked **beta**. LibreVNA's own hardware has not been tested yet.
 - Detailed validation records are in [Testing](docs/en/TESTING.md); changes are in [CHANGELOG.md](CHANGELOG.md) and the [release notes](docs/en/release-notes/).
 
@@ -47,11 +47,11 @@ More screenshots (E-Cal, B60, landscape, English UI) are in [docs/screenshots](d
 
 ## Download and install
 
-- Download the latest APK from [Releases](https://github.com/dfdtc/DroidVNA/releases), or use [dist/DroidVNA-0.7.1-beta-release.apk](dist/DroidVNA-0.7.1-beta-release.apk) from the repository.
+- Download the latest APK from [Releases](https://github.com/dfdtc/DroidVNA/releases), or use [dist/DroidVNA-0.7.2-beta-release.apk](dist/DroidVNA-0.7.2-beta-release.apk) from the repository.
 - Requirements: Android 8.0 (API 26) or newer, a device and cable with USB Host / OTG support, and VNA firmware protocol version 14.
 
 ```bash
-adb install -r dist/DroidVNA-0.7.1-beta-release.apk
+adb install -r dist/DroidVNA-0.7.2-beta-release.apk
 ```
 
 The APK is a release build signed with the project release key (certificate CN=Houran CHEN). Re-signing with a different keystore prevents in-place upgrades; uninstall first. See [Releasing](docs/en/RELEASING.md) for the signing flow.

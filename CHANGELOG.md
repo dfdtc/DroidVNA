@@ -5,7 +5,11 @@
 
 > 本文件仅维护中文；每个版本的英文摘要见 [docs/en/release-notes](docs/en/release-notes/)。
 
-## [Unreleased]
+## [0.7.2-beta] - 2026-11-11
+
+> **这是 Beta 版。** 本版只修协议与校准可靠性，功能面与 0.7.1-beta 相同；`extTrigger` 的
+> 非 0 语义（外触发）仍未实现，需要等 Harogic 确认。真机验证记录见本节末尾与
+> [测试与验证](docs/TESTING.md)。
 
 ### 修复
 

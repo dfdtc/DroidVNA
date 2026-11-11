@@ -63,17 +63,17 @@
 
 ## 安装
 
-已构建的 release APK（仓库内）：[dist/DroidVNA-0.7.1-beta-release.apk](../dist/DroidVNA-0.7.1-beta-release.apk)
+已构建的 release APK（仓库内）：[dist/DroidVNA-0.7.2-beta-release.apk](../dist/DroidVNA-0.7.2-beta-release.apk)
 
 ```
-dist/DroidVNA-0.7.1-beta-release.apk
-大小: 13,225,872 字节
-SHA-256: F8C80D0FC10E093E94503C29A5E71A44F6B671E28E61C56E89A37DDBFD190500
-版本: 0.7.1-beta (versionCode 10)
+dist/DroidVNA-0.7.2-beta-release.apk
+大小: 13,225,877 字节
+SHA-256: 4A65646620BB4E835480B6D9E4E730540B34C0DACFBA6E9FCB1A6E55C0D59E39
+版本: 0.7.2-beta (versionCode 11)
 ```
 
 ```bash
-adb install -r dist/DroidVNA-0.7.1-beta-release.apk
+adb install -r dist/DroidVNA-0.7.2-beta-release.apk
 ```
 
 也可以从仓库的 **Releases** 页面下载同一版本。该 APK 是 release 构建，使用项目发布密钥签署（证书 CN=Houran CHEN）；换用别的 keystore 重新签名后无法覆盖安装，只能先卸载。签名流程见 [发布流程](RELEASING.md)。

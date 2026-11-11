@@ -16,8 +16,8 @@ DroidVNA is a touch-first, native Android USB host client for LibreVNA and Harog
 
 ## 项目状态
 
-- 当前版本 **0.7.1-beta**（versionCode 10），要求 Android 8.0（API 26）及以上；compileSdk / targetSdk 36。
-- 0.7.1-beta 新增标记分析工具（带宽搜索 / XdB 搜索 / DTF）；分析功能已在演示模式与单元测试中验证，DTF 距离精度尚未与真实电缆 / 故障点对照。
+- 当前版本 **0.7.2-beta**（versionCode 11），要求 Android 8.0（API 26）及以上；compileSdk / targetSdk 36。
+- 0.7.2-beta 修复协议与校准可靠性：B60 的 `SweepSettings` 固定发送 32 字节（含 `extTrigger` 扩展字节）、移除 SA 复位规避、E-Cal 采集超时按扫描时间自适应；0.7.1 的标记分析工具功能不变。
 - 12 项 SOLT 的 E-Cal 自动流程已在真机（Harogic B60 + ECB-60）上跑通并成功应用，但**绝对精度尚未与桌面版 / 已知 DUT 对照**，**手动 SOLT 流程尚未上机**（缺机械校准件），因此本版标记为 **beta**；LibreVNA 官方硬件尚未上机实测。
 - 详细验证记录见 [测试与验证](docs/TESTING.md)，变更见 [CHANGELOG.md](CHANGELOG.md) 与 [Release Notes](docs/release-notes/)。
 
@@ -49,11 +49,11 @@ DroidVNA is a touch-first, native Android USB host client for LibreVNA and Harog
 
 ## 下载与安装
 
-- 从 [Releases](https://github.com/dfdtc/DroidVNA/releases) 下载最新 APK，或使用仓库内的 [dist/DroidVNA-0.7.1-beta-release.apk](dist/DroidVNA-0.7.1-beta-release.apk)。
+- 从 [Releases](https://github.com/dfdtc/DroidVNA/releases) 下载最新 APK，或使用仓库内的 [dist/DroidVNA-0.7.2-beta-release.apk](dist/DroidVNA-0.7.2-beta-release.apk)。
 - 要求：Android 8.0（API 26）及以上、支持 USB Host / OTG 的设备与数据线，VNA 固件协议版本 14。
 
 ```bash
-adb install -r dist/DroidVNA-0.7.1-beta-release.apk
+adb install -r dist/DroidVNA-0.7.2-beta-release.apk
 ```
 
 该 APK 是 release 构建，使用项目发布密钥签署（证书 CN=Houran CHEN）；换用别的 keystore 重新签名后无法覆盖安装，只能先卸载。签名流程见 [发布流程](docs/RELEASING.md)。

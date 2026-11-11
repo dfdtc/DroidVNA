@@ -21,7 +21,7 @@
 
 ## 验证状态
 
-当前版本标记为 **beta** 的原因与实机验证记录见 [测试与验证](TESTING.md) 和 [0.7.1-beta Release Notes](release-notes/0.7.1-beta.md)。
+当前版本标记为 **beta** 的原因与实机验证记录见 [测试与验证](TESTING.md) 和 [0.7.2-beta Release Notes](release-notes/0.7.2-beta.md)。
 
 ## 后续方向
 

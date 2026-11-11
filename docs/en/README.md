@@ -27,6 +27,7 @@ DroidVNA's documentation is organized by purpose. The README is kept to the proj
 | Document | Contents |
 | --- | --- |
 | [Changelog](../../CHANGELOG.md) | Changes by version (maintained in Chinese) |
+| [0.7.2-beta](release-notes/0.7.2-beta.md) | B60 extTrigger byte, SA reset removed, adaptive E-Cal capture timeout |
 | [0.7.1-beta](release-notes/0.7.1-beta.md) | Marker analysis: bandwidth search, XdB search, DTF |
 | [0.7.0-beta](release-notes/0.7.0-beta.md) | Full 12-term SOLT, isolation re-measurement, uncalibrated-band warning |
 | [0.6.0](release-notes/0.6.0.md) | Smith chart crash and zoom fixes |
