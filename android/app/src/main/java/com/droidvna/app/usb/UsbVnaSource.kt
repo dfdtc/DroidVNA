@@ -83,14 +83,15 @@ class UsbVnaSource private constructor(
         version++
         lastDataVersion = -1
         assembler = SweepAssembler(config, onSweep = { _sweeps.tryEmit(it) }, onPartial = { _sweeps.tryEmit(it) })
-        // Always send the complete 32-byte SweepSettings. The last byte is the Harogic
-        // extTrigger extension: if it is left out, the VNB-60 firmware keeps whatever value a
-        // previous packet left in its shared receive buffer and then waits for that many
-        // trigger events per point (residue 0xFF => no data at all). External triggering is
-        // not implemented, so the byte is sent explicitly as 0.
+        // B60 (VNB-60) needs the full 32-byte SweepSettings: the last byte is the Harogic
+        // extTrigger extension, and its firmware reuses the receive buffer, so leaving the byte
+        // out makes it keep whatever a previous packet wrote there and then wait for that many
+        // trigger events per point (residue 0xFF => no data at all). External triggering is not
+        // implemented, so the byte is sent explicitly as 0.
+        // Everything else keeps the upstream 31-byte standard packet.
         val settings = SweepSettings.fromConfig(config, standby)
-        val bytes = settings.encode()
-        Log.d("VnaB60", "start " + settings)
+        val bytes = settings.encode(legacy31 = !isB60)
+        Log.d("VnaB60", "start " + settings + if (isB60) " (32B)" else " (31B)")
         // Abort a possibly running sweep first.
         link.send(Type.SET_IDLE, ByteArray(0), awaitAck = true, timeoutMs = 1000)
         if (isB60) {
@@ -120,8 +121,8 @@ class UsbVnaSource private constructor(
      *
      * This used to be an "SA mode" reset, which was a misdiagnosis: switching modes only
      * helped because the mode switch happened to overwrite the firmware's shared receive
-     * buffer, and with an extTrigger residue it worked only by coincidence. Now that the
-     * 32-byte SweepSettings is always sent the residue is gone, so recovery just means
+     * buffer, and with an extTrigger residue it worked only by coincidence. Now that the B60
+     * always gets the 32-byte SweepSettings the residue is gone, so recovery just means
      * re-sending the very same configuration instead of pretending to switch modes.
      *
      * Nothing happens while datapoints arrive; a normal sweep delivers its first usable

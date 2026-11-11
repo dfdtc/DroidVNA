@@ -24,8 +24,9 @@ import java.util.zip.CRC32
  * VNA datapoints carry a CRC of zero for throughput reasons.
  *
  * The Harogic VNB-60 speaks the same protocol but its `SweepSettings` payload is **32** bytes
- * instead of the 31 an upstream LibreVNA uses (one vendor extension byte, `extTrigger`). See
- * [SweepSettings] for why that byte must always be sent explicitly.
+ * instead of the 31 an upstream LibreVNA uses (one vendor extension byte, `extTrigger`). The
+ * public [encodeSweepSettings] defaults to the upstream 31-byte layout; the B60 driver opts into
+ * the 32-byte layout explicitly. See [SweepSettings] for why the B60 needs that byte.
  */
 object Protocol {
     const val VERSION = 14
@@ -38,7 +39,7 @@ object Protocol {
      * renumbered; entries marked "device -> host" describe frames the device sends.
      */
     object Type {
-        const val SWEEP_SETTINGS = 2 // host -> device, 32 B (31 B on upstream LibreVNA)
+        const val SWEEP_SETTINGS = 2 // host -> device, 31 B (32 B incl. extTrigger on the B60)
         const val MANUAL_STATUS = 3 // device -> host
         const val MANUAL_CONTROL = 4
         const val DEVICE_INFO = 5 // device -> host, 57 B
@@ -107,16 +108,23 @@ object Protocol {
     }
 
     /**
-     * Builds the 32-byte `SweepSettings` payload of a sweep configuration.
+     * Builds the `SweepSettings` payload of a sweep configuration.
      *
-     * [extTrigger] is the Harogic extension byte; it stays [SweepSettings.EXT_TRIGGER_OFF] until
-     * external triggering is actually implemented (Harogic has not defined the semantics yet).
+     * @param legacy31 `true` (default) emits the upstream LibreVNA 31-byte standard format —
+     *   call it directly for a generic LibreVNA or any LibreVNA-compatible device. `false`
+     *   emits the full 32-byte struct including [extTrigger]; the Harogic B60 driver is the
+     *   only caller that passes it, because the VNB-60 firmware reads a 32-byte struct and
+     *   reuses its receive buffer.
+     * @param extTrigger the Harogic extension byte. Only sent when [legacy31] is `false`; it
+     *   stays [SweepSettings.EXT_TRIGGER_OFF] until external triggering is actually implemented
+     *   (Harogic has not defined the semantics yet).
      */
     fun encodeSweepSettings(
         config: SweepConfig,
         standby: Boolean,
+        legacy31: Boolean = true,
         extTrigger: Int = SweepSettings.EXT_TRIGGER_OFF,
-    ): ByteArray = SweepSettings.fromConfig(config, standby, extTrigger).encode()
+    ): ByteArray = SweepSettings.fromConfig(config, standby, extTrigger).encode(legacy31)
 
     fun parseDeviceInfo(payload: ByteArray): VnaDeviceInfo? {
         if (payload.size < 57) return null
@@ -245,7 +253,7 @@ object Protocol {
  * 31   1  extTrigger               Harogic extension, see [extTrigger]
  * ```
  *
- * ### Why the 32nd byte always gets sent
+ * ### Why the 32nd byte exists
  *
  * Upstream LibreVNA stops at offset 30 (31 bytes). The VNB-60 firmware instead reads a 32-byte
  * struct, and it decodes packets into a *shared, statically reused* receive buffer that is only
@@ -254,9 +262,12 @@ object Protocol {
  * that many external trigger events per point, which looks exactly like "the device hangs":
  * residue 0 gives a normal continuous sweep, 1 drops to ~11 points, 0xFF to none at all.
  *
- * Sending the full 32 bytes with an explicit `extTrigger` removes that dependency on buffer
- * history. Sending 32 bytes to an upstream LibreVNA is harmless: its decoder copies the payload
- * into a union that is much larger than the 31-byte struct, so the extra byte lands in padding.
+ * Because that behaviour is specific to the Harogic fork, [encode] defaults to the upstream
+ * 31-byte layout (the `Protocol.encodeSweepSettings` entry point defaults to `legacy31 = true`)
+ * and the B60 driver opts into the 32-byte layout with `legacy31 = false`. Sending the extra
+ * byte to an upstream LibreVNA would be harmless (its decoder copies the payload into a union
+ * larger than the 31-byte struct, so it lands in padding), but it is an unverified deviation
+ * from the published format, so it stays behind the explicit opt-out.
  */
 class SweepSettings(
     val startHz: Long,
@@ -289,8 +300,16 @@ class SweepSettings(
     /** True when the device would be asked to wait for external trigger events. */
     val triggersEnabled: Boolean get() = extTrigger != EXT_TRIGGER_OFF
 
-    fun encode(): ByteArray {
-        val bb = ByteBuffer.allocate(SIZE).order(ByteOrder.LITTLE_ENDIAN)
+    /**
+     * Encodes the packed struct.
+     *
+     * @param legacy31 `false` (default) emits the full 32-byte struct including [extTrigger],
+     *   which the Harogic B60 (VNB-60) requires. `true` drops the last byte and emits the
+     *   upstream 31-byte standard format — the safe choice for LibreVNA hardware and any
+     *   LibreVNA-compatible device whose `extTrigger` handling is not known.
+     */
+    fun encode(legacy31: Boolean = false): ByteArray {
+        val bb = ByteBuffer.allocate(if (legacy31) LEGACY_SIZE else SIZE).order(ByteOrder.LITTLE_ENDIAN)
         bb.putLong(startHz)
         bb.putLong(stopHz)
         bb.putShort(points.toShort())
@@ -300,7 +319,7 @@ class SweepSettings(
         bb.putShort(stageWord.toShort())
         bb.putShort(excitationStopCdBm.toShort())
         bb.putShort(dwellTimeUs.toShort())
-        bb.put(extTrigger.toByte())
+        if (!legacy31) bb.put(extTrigger.toByte())
         return bb.array()
     }
 
@@ -339,6 +358,9 @@ class SweepSettings(
     companion object {
         /** Wire size of the packed struct the VNB-60 expects. */
         const val SIZE = 32
+
+        /** Upstream LibreVNA standard size: the same struct without the [extTrigger] byte. */
+        const val LEGACY_SIZE = 31
 
         /** Free-running continuous sweep; the only supported value so far. */
         const val EXT_TRIGGER_OFF = 0

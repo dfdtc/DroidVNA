@@ -90,9 +90,10 @@ class ProtocolTest {
             twoPort = true,
             logSweep = true,
         )
-        val bytes = Protocol.encodeSweepSettings(config, standby = true)
+        val bytes = Protocol.encodeSweepSettings(config, standby = true, legacy31 = false)
         // The VNB-60 reads a 32-byte struct: the 31 upstream fields plus the Harogic
-        // extTrigger extension byte. Sending 31 bytes is what lets stale trigger values survive.
+        // extTrigger extension byte. Sending 31 bytes is what lets stale trigger values survive,
+        // so the B60 driver is the caller that turns this layout on.
         assertEquals(SweepSettings.SIZE, bytes.size)
         assertEquals(32, bytes.size)
         val bb = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
@@ -115,6 +116,32 @@ class ProtocolTest {
         // extTrigger: free-running continuous sweep, sent explicitly instead of left to chance.
         assertEquals(SweepSettings.EXT_TRIGGER_OFF, bb.get().toInt() and 0xFF)
         assertEquals(0, bb.remaining())
+    }
+
+    @Test
+    fun defaultPacketIsTheUpstream31ByteStandard() {
+        // Called without options, encodeSweepSettings must emit the published upstream format:
+        // 31 bytes, extTrigger absent. Only the B60 driver opts out with legacy31 = false.
+        val config = SweepConfig(
+            startHz = 100_000_000L,
+            stopHz = 6_000_000_000L,
+            points = 401,
+            ifbwHz = 10_000,
+            powerDbm = -10.0,
+            twoPort = true,
+        )
+        val bytes = Protocol.encodeSweepSettings(config, standby = false)
+        assertEquals(SweepSettings.LEGACY_SIZE, bytes.size)
+        assertEquals(31, bytes.size)
+        val bb = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+        bb.long; bb.long; bb.short; bb.int; bb.short; bb.get(); bb.short; bb.short; bb.short
+        // Every upstream field fits exactly; the extTrigger byte is not present.
+        assertEquals(0, bb.remaining())
+
+        // Same config in B60 mode gains exactly one trailing byte, still zero.
+        val b60 = Protocol.encodeSweepSettings(config, standby = false, legacy31 = false)
+        assertEquals(SweepSettings.SIZE, b60.size)
+        assertEquals(SweepSettings.EXT_TRIGGER_OFF, b60[31].toInt())
     }
 
     @Test
@@ -148,11 +175,12 @@ class ProtocolTest {
         assertEquals(0, SweepSettings.SyncMode.NONE)
         assertEquals(3, SweepSettings.SyncMode.TRIGGER)
         // A production configuration keeps syncMode 0 and extTrigger 0: the trigger feature is
-        // reserved in the structure but must never be enabled by accident.
-        val bytes = Protocol.encodeSweepSettings(SweepConfig(), standby = false)
-        val flags = bytes[24].toInt() and 0xFF
-        assertEquals(0, flags and SweepSettings.Flags.SYNC_MODE_MASK)
-        assertEquals(SweepSettings.EXT_TRIGGER_OFF, bytes[31].toInt())
+        // reserved in the structure but must never be enabled by accident — in either layout.
+        val legacy = Protocol.encodeSweepSettings(SweepConfig(), standby = false)
+        assertEquals(0, legacy[24].toInt() and 0xFF and SweepSettings.Flags.SYNC_MODE_MASK)
+        val b60 = Protocol.encodeSweepSettings(SweepConfig(), standby = false, legacy31 = false)
+        assertEquals(0, b60[24].toInt() and 0xFF and SweepSettings.Flags.SYNC_MODE_MASK)
+        assertEquals(SweepSettings.EXT_TRIGGER_OFF, b60[31].toInt())
     }
 
     @Test

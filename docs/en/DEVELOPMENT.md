@@ -112,16 +112,19 @@ dist/                            Prebuilt APKs
   - `0x81` IN data
   - `0x82` IN device log
 - Frame: `0x5A | uint16 length LE | uint8 type | payload | uint32 CRC32`; the VNADatapoint CRC is 0.
-- `SweepSettings` is a **32-byte** packed C struct on the VNB-60 (31 bytes upstream) with bitfields in LSB order:
+- `SweepSettings` is a packed C struct with bitfields in LSB order:
   - standby / syncMaster / suppressPeaks / fixedPower / logSweep / syncMode
   - stages, port1Stage…port4Stage
   - start/stop frequency, points, IFBW, start/stop power, dwell
   - offset 31: `extTrigger` (Harogic extension; `0` = free-running continuous sweep, non-zero = wait
-    for N trigger events per point). It **must be sent explicitly**: the firmware decodes into a
-    shared, reused receive buffer and only overwrites the bytes actually received, so a 31-byte
-    packet lets this byte keep the previous packet's value. A non-zero residue makes the device wait
-    for triggers and looks hung (`0` normal, `1` about 11 points, `0xFF` no data at all). See the
-    `Protocol.SweepSettings` KDoc.
+    for N trigger events per point)
+  - **Length depends on the device**: `Protocol.encodeSweepSettings(config, standby, legacy31 = true)`
+    **defaults to the 31-byte standard packet** (upstream LibreVNA and unknown compatible devices).
+    Only the B60 driver passes `legacy31 = false`, which appends the offset-31 `extTrigger` byte and
+    sends 32 bytes. The B60 needs it because the firmware decodes into a shared, reused receive
+    buffer and only overwrites the bytes actually received: sending 31 bytes lets that byte keep the
+    previous packet's value, and a non-zero residue makes the device wait for triggers and look hung
+    (`0` normal, `1` about 11 points, `0xFF` no data at all). See the `Protocol.SweepSettings` KDoc.
 - External triggering is not implemented yet: `extTrigger` is always 0 and `SetTrigger` (28) /
   `ClearTrigger` (29) only reserve the packet numbers until Harogic defines non-zero values
   (`Protocol.Type`, `Protocol.SweepSettings.extTrigger`).

@@ -5,6 +5,23 @@
 
 > 本文件仅维护中文；每个版本的英文摘要见 [docs/en/release-notes](docs/en/release-notes/)。
 
+## [Unreleased]
+
+### 修复
+
+- **`SweepSettings` 改为按设备选择包长**：`Protocol.encodeSweepSettings(config, standby, legacy31 = true)`
+  默认发上游 LibreVNA 的 **31 字节标准包**（LibreVNA 官方硬件与未知 LibreVNA 兼容设备都不再被多塞一字节），
+  只有 B60 驱动传 `legacy31 = false` 才发 32 字节（补 `extTrigger`）。B60 修复语义不变，但不再污染其他设备。
+
+### 预留
+
+- 外触发仍未实现：`extTrigger` 恒为 0，`SetTrigger`(28) / `ClearTrigger`(29) 只保留包号。
+
+### 验证
+
+- **79 个 JVM 单元测试全部通过**（新增 `defaultPacketIsTheUpstream31ByteStandard`：默认出 31 字节、
+  B60 显式出 32 字节且末字节为 0）。
+
 ## [0.7.2-beta] - 2026-11-11
 
 > **这是 Beta 版。** 本版只修协议与校准可靠性，功能面与 0.7.1-beta 相同；`extTrigger` 的
