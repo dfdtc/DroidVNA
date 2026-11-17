@@ -77,6 +77,7 @@ import com.droidvna.app.ui.AppOverflowMenu
 import com.droidvna.app.ui.chart.ChartMode
 import com.droidvna.app.ui.chart.VnaChart
 import com.droidvna.app.ui.chart.color
+import com.droidvna.app.ui.chart.formatSmithReadout
 import com.droidvna.app.ui.components.AnalysisMenuButton
 import com.droidvna.app.ui.components.ChoiceChip
 import com.droidvna.app.ui.components.CollapseToggle
@@ -110,6 +111,7 @@ fun MeasureScreen(vm: MainViewModel, wide: Boolean) {
     val mode by vm.chartMode.collectAsStateWithLifecycle()
     val autoY by vm.chartAutoY.collectAsStateWithLifecycle()
     val logFrequencyAxis by vm.logFrequencyAxis.collectAsStateWithLifecycle()
+    val smithReadout by vm.smithReadout.collectAsStateWithLifecycle()
     val markers by vm.markers.collectAsStateWithLifecycle()
     val running by vm.repo.running.collectAsStateWithLifecycle()
     val singleSweep by vm.repo.singleSweep.collectAsStateWithLifecycle()
@@ -195,9 +197,10 @@ fun MeasureScreen(vm: MainViewModel, wide: Boolean) {
                                 autoY = autoY,
                                 onAutoYChange = { vm.chartAutoY.value = it },
                                 logFrequencyAxis = logFrequencyAxis,
+                                smithReadout = smithReadout,
                                 focusedMarkerId = focusedMarkerId,
                                 onMoveFocusedMarker = { vm.moveFocusedMarker(it) },
-                                sliderLabel = if (mode == ChartMode.SMITH) tr("迹线频率") else tr("频率"),
+                                sliderLabel = if (mode.isGamma) tr("迹线频率") else tr("频率"),
                                 showWatermark = !hideWatermark,
                                 modifier = Modifier.weight(1f).fillMaxWidth(),
                             )
@@ -282,9 +285,10 @@ fun MeasureScreen(vm: MainViewModel, wide: Boolean) {
                             autoY = autoY,
                             onAutoYChange = { vm.chartAutoY.value = it },
                             logFrequencyAxis = logFrequencyAxis,
+                            smithReadout = smithReadout,
                             focusedMarkerId = focusedMarkerId,
                             onMoveFocusedMarker = { vm.moveFocusedMarker(it) },
-                            sliderLabel = if (mode == ChartMode.SMITH) tr("迹线频率") else tr("频率"),
+                            sliderLabel = if (mode.isGamma) tr("迹线频率") else tr("频率"),
                             showWatermark = !hideWatermark,
                             modifier = Modifier.weight(1f).fillMaxWidth(),
                         )
@@ -432,7 +436,7 @@ private fun MeasureHeader(
                 for (p in SParam.entries) {
                     val transmission = p == SParam.S21 || p == SParam.S12
                     val available = (config.twoPort || !p.needsTwoPort) &&
-                        !((mode == ChartMode.VSWR || mode == ChartMode.SMITH) && transmission)
+                        !((mode == ChartMode.VSWR || mode.isGamma) && transmission)
                     ParamChip(
                         param = p,
                         selected = enabled.contains(p),
@@ -446,7 +450,7 @@ private fun MeasureHeader(
                 for (m in ChartMode.entries) {
                     ChoiceChip(m.label, mode == m) { vm.chartMode.value = m }
                 }
-                if (mode != ChartMode.SMITH) {
+                if (!mode.isGamma) {
                     Spacer(Modifier.width(6.dp))
                     Box(Modifier.width(1.dp).height(22.dp).background(VnaOutline))
                     Spacer(Modifier.width(6.dp))
@@ -524,7 +528,7 @@ private fun MarkerBar(
                 ChoiceChip("Δ", delta) { vm.deltaMarkers.value = !delta }
                 AnalysisMenuButton(vm)
             }
-            if (delta && markers.size >= 2 && sweep != null) {
+            if (delta && markers.size >= 2) {
                 Spacer(Modifier.height(6.dp))
                 Row(
                     modifier = Modifier.horizontalScroll(rememberScrollState()),
@@ -536,9 +540,19 @@ private fun MarkerBar(
                         fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace,
                     )
+                    // Both markers are quoted at the frequency they actually read at (the nearest
+                    // sweep point, exactly like the marker cards), so the two readouts never
+                    // disagree by a few MHz on a log sweep.
+                    val deltaHz = markerFrequency(sweep, markers[1]) - markerFrequency(sweep, markers[0])
+                    Text(
+                        "Δf " + (if (deltaHz >= 0) "+" else "") + formatFrequency(deltaHz, 3),
+                        color = VnaSecondary,
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                    )
                     for (p in SParam.entries) {
                         if (!enabled.contains(p)) continue
-                        if ((mode == ChartMode.VSWR || mode == ChartMode.SMITH) && (p == SParam.S21 || p == SParam.S12)) continue
+                        if ((mode == ChartMode.VSWR || mode.isGamma) && (p == SParam.S21 || p == SParam.S12)) continue
                         val a = markerMetric(sweep, markers[0], p, mode)
                         val b = markerMetric(sweep, markers[1], p, mode)
                         if (a != null && b != null) {
@@ -546,7 +560,7 @@ private fun MarkerBar(
                                 ChartMode.DB -> " dB"
                                 ChartMode.PHASE -> "°"
                                 ChartMode.VSWR -> ""
-                                ChartMode.SMITH -> " |Γ|"
+                                ChartMode.SMITH, ChartMode.SMITH_3D -> " |Γ|"
                             }
                             val value = if (mode == ChartMode.DB) formatDb(b - a) else String.format("%.3f", b - a) + unit
                             Text(
@@ -563,6 +577,16 @@ private fun MarkerBar(
     }
 }
 
+/**
+ * The frequency a marker actually reads at: the nearest sweep point when data is available,
+ * otherwise the stored position. The marker card and the Δ row both go through this so a marker
+ * never appears at one frequency in the card and another in the delta.
+ */
+private fun markerFrequency(sweep: SweepResult?, marker: Marker): Double {
+    val index = sweep?.nearestIndex(marker.freqHz) ?: return marker.freqHz
+    return sweep.freqHz.getOrNull(index)?.toDouble() ?: marker.freqHz
+}
+
 private fun markerMetric(sweep: SweepResult?, marker: Marker, param: SParam, mode: ChartMode): Double? {
     if (sweep == null) return null
     val index = sweep.nearestIndex(marker.freqHz)
@@ -572,7 +596,7 @@ private fun markerMetric(sweep: SweepResult?, marker: Marker, param: SParam, mod
         ChartMode.DB -> c.magDb()
         ChartMode.PHASE -> c.phaseDeg()
         ChartMode.VSWR -> c.vswr()
-        ChartMode.SMITH -> c.abs()
+        ChartMode.SMITH, ChartMode.SMITH_3D -> c.abs()
     }
 }
 
@@ -587,8 +611,9 @@ private fun MarkerCard(
     onFocus: () -> Unit,
     onDelete: () -> Unit,
 ) {
+    val readout by vm.smithReadout.collectAsStateWithLifecycle()
     val index = sweep?.nearestIndex(marker.freqHz) ?: 0
-    val frequency = sweep?.freqHz?.getOrNull(index)?.toDouble() ?: marker.freqHz
+    val frequency = markerFrequency(sweep, marker)
     Surface(
         color = if (focused) VnaSecondary.copy(alpha = 0.10f) else VnaSurfaceElevated,
         shape = RoundedCornerShape(10.dp),
@@ -610,11 +635,13 @@ private fun MarkerCard(
             Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                 for (p in SParam.entries) {
                     if (!enabled.contains(p) || sweep == null) continue
-                    if ((mode == ChartMode.VSWR || mode == ChartMode.SMITH) && (p == SParam.S21 || p == SParam.S12)) continue
+                    if ((mode == ChartMode.VSWR || mode.isGamma) && (p == SParam.S21 || p == SParam.S12)) continue
                     val c = sweep.valueAt(p, index)
                     if (!c.isFinite()) continue
                     val text = when (mode) {
-                        ChartMode.SMITH -> p.label + " |Γ|" + String.format("%.3f", c.abs())
+                        ChartMode.SMITH, ChartMode.SMITH_3D ->
+                            p.label + " |Γ|" + String.format("%.3f", c.abs()) +
+                                formatSmithReadout(c, readout)
                         ChartMode.PHASE -> p.label + " " + String.format("%.0f°", c.phaseDeg())
                         ChartMode.VSWR -> p.label + " " + String.format("%.2f", c.vswr())
                         ChartMode.DB -> p.label + " " + String.format("%.1f dB", c.magDb())
@@ -773,7 +800,7 @@ private fun TraceCard(vm: MainViewModel, config: SweepConfig, enabled: Set<SPara
             for (p in SParam.entries) {
                 val transmission = p == SParam.S21 || p == SParam.S12
                 val available = (config.twoPort || !p.needsTwoPort) &&
-                    !((chartMode == ChartMode.VSWR || chartMode == ChartMode.SMITH) && transmission)
+                    !((chartMode == ChartMode.VSWR || chartMode.isGamma) && transmission)
                 ParamChip(p, enabled.contains(p), available) {
                     vm.toggleParam(p)
                 }

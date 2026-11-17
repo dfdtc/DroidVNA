@@ -9,6 +9,7 @@ package com.droidvna.app.ui.sheets
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -26,6 +27,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -50,6 +52,7 @@ import com.droidvna.app.MainViewModel
 import com.droidvna.app.model.SParam
 import com.droidvna.app.model.analysis.DtfResult
 import com.droidvna.app.model.analysis.DtfWindow
+import com.droidvna.app.model.analysis.XdbDirection
 import com.droidvna.app.model.analysis.XdbReferenceMode
 import com.droidvna.app.model.analysis.XdbSearchResult
 import com.droidvna.app.model.analysis.XdbSide
@@ -113,6 +116,29 @@ private fun SheetHeader(title: String, subtitle: String, onClose: () -> Unit) {
 // Bandwidth search / XdB search
 // --------------------------------------------------------------------------
 
+/**
+ * Compact −/+ switch in front of the X field: one tap flips the search from below the
+ * reference to above it (or back), which is what an antenna bandwidth measurement needs when
+ * the reference is the dip of |S11|.
+ */
+@Composable
+private fun SignToggle(value: XdbDirection, onChange: (XdbDirection) -> Unit) {
+    OutlinedButton(
+        onClick = { onChange(if (value.above) XdbDirection.BELOW else XdbDirection.ABOVE) },
+        shape = RoundedCornerShape(10.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+        modifier = Modifier.height(56.dp),
+    ) {
+        Text(
+            value.sign,
+            color = VnaPrimary,
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = FontFamily.Monospace,
+        )
+    }
+}
+
 @Composable
 private fun XdbAnalysisContent(vm: MainViewModel, bandwidth: Boolean) {
     val enabled by vm.enabledParams.collectAsStateWithLifecycle()
@@ -136,6 +162,7 @@ private fun XdbAnalysisContent(vm: MainViewModel, bandwidth: Boolean) {
     var trace by remember { mutableStateOf(defaultXdbTrace(availableParams)) }
     var referenceMode by remember { mutableStateOf(XdbReferenceMode.PEAK) }
     var side by remember { mutableStateOf(XdbSide.BOTH) }
+    var direction by remember { mutableStateOf(XdbDirection.BELOW) }
     var cursorId by remember { mutableStateOf(focusedMarkerId ?: markers.firstOrNull()?.id) }
     var dropText by remember { mutableStateOf("3.0") }
     var localError by remember { mutableStateOf<String?>(null) }
@@ -159,6 +186,7 @@ private fun XdbAnalysisContent(vm: MainViewModel, bandwidth: Boolean) {
             cursorMarkerId = activeCursor?.id,
             dropDb = drop!!,
             side = if (bandwidth) XdbSide.BOTH else side,
+            direction = direction,
         )
     }
 
@@ -174,9 +202,9 @@ private fun XdbAnalysisContent(vm: MainViewModel, bandwidth: Boolean) {
         SheetHeader(
             title = if (bandwidth) "带宽搜索" else "XdB 搜索",
             subtitle = if (bandwidth) {
-                "在指定迹线上找 -X dB 的两个边沿（默认 -3 dB）"
+                "在指定迹线上找参考电平 ±X dB 的两个边沿（默认 −3 dB）"
             } else {
-                "按左侧 / 右侧 / 双侧搜索参考电平以下的 -X dB 点"
+                "按左侧 / 右侧 / 双侧搜索参考电平 ±X dB 的点"
             },
             onClose = vm::closeAnalysis,
         )
@@ -203,6 +231,9 @@ private fun XdbAnalysisContent(vm: MainViewModel, bandwidth: Boolean) {
                 ChoiceChip("峰值", referenceMode == XdbReferenceMode.PEAK) {
                     referenceMode = XdbReferenceMode.PEAK
                 }
+                ChoiceChip("谷值", referenceMode == XdbReferenceMode.VALLEY) {
+                    referenceMode = XdbReferenceMode.VALLEY
+                }
                 ChoiceChip("游标", referenceMode == XdbReferenceMode.CURSOR) {
                     referenceMode = XdbReferenceMode.CURSOR
                 }
@@ -211,6 +242,13 @@ private fun XdbAnalysisContent(vm: MainViewModel, bandwidth: Boolean) {
             if (referenceMode == XdbReferenceMode.PEAK) {
                 Text(
                     "以所选迹线的最高点作为 0 dB 参考。",
+                    color = VnaTextMuted,
+                    fontSize = 10.5.sp,
+                )
+            } else if (referenceMode == XdbReferenceMode.VALLEY) {
+                Text(
+                    "以所选迹线的最低点作为 0 dB 参考；天线带宽常用 |S11| 的谷值，" +
+                        "再向上找两个 +X dB 边沿。",
                     color = VnaTextMuted,
                     fontSize = 10.5.sp,
                 )
@@ -241,8 +279,20 @@ private fun XdbAnalysisContent(vm: MainViewModel, bandwidth: Boolean) {
             }
         }
 
-        SectionCard(title = if (bandwidth) "带宽定义（-X dB）" else "搜索深度（-X dB）") {
+        SectionCard(title = if (bandwidth) "带宽定义（±X dB）" else "搜索深度（±X dB）") {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                SignToggle(direction) { next ->
+                    // The sign and the extremum are one choice in practice: below a peak for a
+                    // filter, above a dip for an antenna. Follow the sign so a single tap cannot
+                    // leave the search pointing at a level the trace never reaches.
+                    if (next.above && referenceMode == XdbReferenceMode.PEAK) {
+                        referenceMode = XdbReferenceMode.VALLEY
+                    } else if (!next.above && referenceMode == XdbReferenceMode.VALLEY) {
+                        referenceMode = XdbReferenceMode.PEAK
+                    }
+                    direction = next
+                }
+                Spacer(Modifier.width(8.dp))
                 OutlinedTextField(
                     value = dropText,
                     onValueChange = { dropText = it; localError = null },
@@ -253,7 +303,11 @@ private fun XdbAnalysisContent(vm: MainViewModel, bandwidth: Boolean) {
                     modifier = Modifier.weight(1f),
                 )
                 Spacer(Modifier.width(10.dp))
-                Text("相对参考下降", color = VnaTextMuted, fontSize = 11.sp)
+                Text(
+                    if (direction.above) "相对参考上升" else "相对参考下降",
+                    color = VnaTextMuted,
+                    fontSize = 11.sp,
+                )
             }
             Spacer(Modifier.height(10.dp))
             Row(
@@ -262,14 +316,14 @@ private fun XdbAnalysisContent(vm: MainViewModel, bandwidth: Boolean) {
             ) {
                 for (value in listOf(1.0, 3.0, 6.0, 10.0, 20.0)) {
                     ChoiceChip(
-                        "-" + value.toInt() + " dB",
+                        value.toInt().toString() + " dB",
                         dropText.toDoubleOrNull() == value,
                     ) { dropText = String.format(Locale.US, "%.1f", value) }
                 }
             }
             Spacer(Modifier.height(8.dp))
             Text(
-                "默认 -3 dB；交叉点在相邻采样点之间线性插值。",
+                "默认 3 dB；交叉点在相邻采样点之间线性插值。",
                 color = VnaTextMuted,
                 fontSize = 10.5.sp,
             )
@@ -345,6 +399,7 @@ private fun XdbResultCard(result: XdbSearchResult, trace: SParam?) {
             "参考",
             formatFrequency(result.reference.frequencyHz, 4) + " · " + formatDb(result.reference.levelDb),
         )
+        KeyValueRow("偏移", result.direction.sign + formatDb(result.dropDb, 1))
         KeyValueRow("目标电平", formatDb(result.targetLevelDb))
         KeyValueRow(
             "左边沿",

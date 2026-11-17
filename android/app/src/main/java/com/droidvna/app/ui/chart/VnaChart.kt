@@ -81,6 +81,7 @@ import com.droidvna.app.ui.theme.VnaSurface
 import com.droidvna.app.ui.theme.VnaSurfaceElevated
 import com.droidvna.app.ui.theme.VnaText
 import com.droidvna.app.ui.theme.VnaTextMuted
+import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -89,12 +90,21 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.sqrt
+import java.util.Locale
 
 enum class ChartMode(val label: String, val unit: String) {
     DB("dB", "dB"),
     PHASE("Phase", "°"),
     VSWR("VSWR", ""),
     SMITH("Smith", ""),
+    SMITH_3D("Smith 3D", "");
+
+    /**
+     * True for the views that plot the reflection coefficient itself (the Smith circle and the
+     * Smith sphere), where the trace is a curve in the Γ plane instead of a column of samples.
+     */
+    val isGamma: Boolean
+        get() = this == SMITH || this == SMITH_3D
 }
 
 val SParam.color: Color
@@ -140,6 +150,52 @@ private data class SmithView(val re: Float = 0f, val im: Float = 0f, val span: F
     }
 }
 
+/**
+ * Orientation and scale of the Smith sphere.
+ *
+ * [yaw] spins the sphere about its own vertical axis, [pitch] tumbles it toward or away from the
+ * viewer and [zoom] scales the projection inside the widget. All angles are radians.
+ *
+ * [pitch] is a full rotation, wrapped into (-π, π] instead of clamped: folding the sphere over the
+ * top is the only way to look the southern (passive, |Γ| < 1) hemisphere in the face, and an
+ * elevation limit would leave it viewable only from below. The default looks down on the sphere
+ * from above the northern (active) hemisphere, so the south is behind and below; dragging up takes
+ * it through the edge-on position and on to a head-on southern view.
+ */
+private data class SphereView(
+    val yaw: Float = -0.55f,
+    val pitch: Float = -1.0f,
+    val zoom: Float = 1f,
+) {
+    companion object {
+        val DEFAULT = SphereView()
+        /** Never shrink the sphere past this, nor blow it up beyond the widget. */
+        const val MIN_ZOOM = 0.45f
+        const val MAX_ZOOM = 2f
+    }
+}
+
+/** Projected sphere: centre and radius in pixels plus the orientation it was built for. */
+private data class SphereGeometry(
+    val cx: Float,
+    val cy: Float,
+    /** Radius of the projected sphere, already scaled by the view's zoom. */
+    val radius: Float,
+    val yaw: Float,
+    val pitch: Float,
+)
+
+/**
+ * A projected point of the Smith sphere.
+ *
+ * [depth] is the rotated z coordinate: positive points at the viewer (front hemisphere), negative
+ * away from it (the far side, drawn dimmed so a curve stays traceable through the sphere).
+ */
+private data class SpherePoint(val x: Float, val y: Float, val depth: Float) {
+    val finite: Boolean
+        get() = x.isFinite() && y.isFinite() && depth.isFinite()
+}
+
 @Composable
 fun VnaChart(
     result: SweepResult?,
@@ -157,6 +213,8 @@ fun VnaChart(
     autoY: Boolean = true,
     onAutoYChange: (Boolean) -> Unit = {},
     logFrequencyAxis: Boolean = false,
+    /** What a Smith readout prints next to |Γ|: the imaginary part or the phase angle. */
+    smithReadout: SmithReadout = SmithReadout.IMAGINARY,
     /** Marker shown with a highlight ring, normally the one M1..Mn chip / trace slider edits. */
     focusedMarkerId: Int? = null,
     /** Called when the user drags the trace-freedom slider along the right edge of the chart. */
@@ -174,6 +232,8 @@ fun VnaChart(
     var crosshairFreq by remember { mutableStateOf<Double?>(null) }
     /** Zoom/pan of the Smith view; reset by the fit button, double tap and a config change. */
     var smithView by remember { mutableStateOf(SmithView.FULL) }
+    /** Rotation/scale of the Smith sphere; only used by [ChartMode.SMITH_3D]. */
+    var sphereView by remember { mutableStateOf(SphereView.DEFAULT) }
     var lastTapTime by remember { mutableLongStateOf(0L) }
     var lastTapPosition by remember { mutableStateOf(Offset.Zero) }
     var sliderEditing by remember { mutableStateOf(false) }
@@ -192,7 +252,7 @@ fun VnaChart(
         onAutoYChange(true)
     }
 
-    val computedY = if (mode == ChartMode.SMITH) (1.0 to -1.0) else computeYRange(result, enabled, mode, viewStart, viewStop)
+    val computedY = if (mode.isGamma) (1.0 to -1.0) else computeYRange(result, enabled, mode, viewStart, viewStop)
     LaunchedEffect(autoY, computedY) {
         if (autoY) {
             manualYMin = computedY.first
@@ -214,14 +274,17 @@ fun VnaChart(
     val currentYMin = rememberUpdatedState(yMin)
     val currentYMax = rememberUpdatedState(yMax)
     val currentSmithView = rememberUpdatedState(smithView)
+    val currentSphereView = rememberUpdatedState(sphereView)
     val currentOnMoveMarker = rememberUpdatedState(onMoveMarker)
     val currentOnAutoYChange = rememberUpdatedState(onAutoYChange)
 
     fun resetView() {
         viewStart = config.startHz.toDouble()
         viewStop = config.stopHz.toDouble()
-        // The Smith view is not a frequency window: "fit" there means back to the whole circle.
+        // The Smith views are not frequency windows: "fit" there means back to the whole sphere /
+        // circle and, on the sphere, back to the default orientation.
         smithView = SmithView.FULL
+        sphereView = SphereView.DEFAULT
         onAutoYChange(true)
         crosshairFreq = null
     }
@@ -240,7 +303,52 @@ fun VnaChart(
                         val width = size.width.toFloat()
                         val height = size.height.toFloat()
                         val modeNow = currentMode.value
-                        val plot = if (modeNow == ChartMode.SMITH) smithBounds(width, height, this)
+                        if (modeNow == ChartMode.SMITH_3D) {
+                            // The sphere is a solid object: one finger spins it, a pinch scales the
+                            // projection and a double tap restores the default orientation. There is
+                            // no crosshair here because a screen point maps to two sphere points.
+                            var rotated = false
+                            var totalMove = 0f
+                            val downTime = System.currentTimeMillis()
+                            var yaw = currentSphereView.value.yaw
+                            var pitch = currentSphereView.value.pitch
+                            var zoom = currentSphereView.value.zoom
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val pressed = event.changes.filter { it.pressed }
+                                if (pressed.size >= 2) {
+                                    rotated = true
+                                    val pinch = event.calculateZoom()
+                                    if (pinch > 0f && pinch.isFinite()) {
+                                        zoom = (zoom * pinch).coerceIn(SphereView.MIN_ZOOM, SphereView.MAX_ZOOM)
+                                    }
+                                    sphereView = SphereView(yaw, pitch, zoom)
+                                    event.changes.forEach { it.consume() }
+                                } else if (pressed.size == 1) {
+                                    val change = pressed[0]
+                                    val delta = change.position - change.previousPosition
+                                    if (delta != Offset.Zero) {
+                                        rotated = true
+                                        yaw = wrapAngle(yaw + delta.x * SPHERE_RADIANS_PER_PIXEL)
+                                        pitch = wrapAngle(pitch + delta.y * SPHERE_RADIANS_PER_PIXEL)
+                                        sphereView = SphereView(yaw, pitch, zoom)
+                                    }
+                                    totalMove += delta.getDistance()
+                                    change.consume()
+                                }
+                                if (event.changes.none { it.pressed }) break
+                            }
+                            if (!rotated && totalMove < 8.dp.toPx() && System.currentTimeMillis() - downTime < 350) {
+                                val now = System.currentTimeMillis()
+                                if (now - lastTapTime < 320 && (down.position - lastTapPosition).getDistance() < 48.dp.toPx()) {
+                                    sphereView = SphereView.DEFAULT
+                                }
+                                lastTapTime = now
+                                lastTapPosition = down.position
+                            }
+                            return@awaitEachGesture
+                        }
+                        val plot = if (modeNow.isGamma) smithBounds(width, height, this)
                         else plotBounds(width, height, this)
                         val smith = if (modeNow == ChartMode.SMITH) {
                             smithGeometry(width, height, this, currentSmithView.value)
@@ -360,10 +468,17 @@ fun VnaChart(
                                     event.changes.forEach { it.consume() }
                                 } else if (pressed.size == 1 && !transformed) {
                                     val pos = pressed[0].position
-                                    totalMove += (pos - last).getDistance()
+                                    val step = pos - last
+                                    totalMove += step.getDistance()
                                     last = pos
-                                    val inPlot = geometry.plot.contains(pos)
-                                    crosshairFreq = if (inPlot) xToFreq(pos.x, geometry) else null
+                                    // One finger only drives the readout crosshair. The Smith viewport
+                                    // is moved with two fingers, like every other chart mode, so a
+                                    // stray drag while reading values can never shift the circle.
+                                    crosshairFreq = if (geometry.plot.contains(pos)) {
+                                        xToFreq(pos.x, geometry)
+                                    } else {
+                                        null
+                                    }
                                     pressed[0].consume()
                                 }
                                 if (event.changes.none { it.pressed }) break
@@ -381,11 +496,19 @@ fun VnaChart(
                     }
                 }
         ) {
-            val plot = if (mode == ChartMode.SMITH) smithBounds(size.width, size.height, this)
+            val plot = if (mode.isGamma) smithBounds(size.width, size.height, this)
             else plotBounds(size.width, size.height, this)
-            if (mode == ChartMode.SMITH) {
-                val smith = smithGeometry(size.width, size.height, this, smithView)
-                drawSmith(result, enabled, markers, smith, smithView, showWatermark, this, focusedMarker?.id)
+            if (mode.isGamma) {
+                if (mode == ChartMode.SMITH_3D) {
+                    drawSmithSphere(
+                        result, enabled, markers,
+                        sphereGeometry(size.width, size.height, this, sphereView),
+                        showWatermark, this, focusedMarker?.id,
+                    )
+                } else {
+                    val smith = smithGeometry(size.width, size.height, this, smithView)
+                    drawSmith(result, enabled, markers, smith, smithView, showWatermark, this, focusedMarker?.id)
+                }
             } else {
                 drawXy(
                     result, enabled, markers, plot, mode, viewStart, viewStop, yMin, yMax,
@@ -395,20 +518,20 @@ fun VnaChart(
             crosshairFreq?.let { f ->
                 if (mode == ChartMode.SMITH) {
                     val smith = smithGeometry(size.width, size.height, this, smithView)
-                    drawSmithCrosshair(result, enabled, f, smith, plot, this)
-                } else {
-                    drawXyCrosshair(result, enabled, f, plot, mode, viewStart, viewStop, yMin, yMax, logFrequencyAxis, this)
+                    drawSmithCrosshair(result, enabled, f, smith, plot, this, smithReadout)
+                } else if (!mode.isGamma) {
+                    drawXyCrosshair(result, enabled, f, plot, mode, viewStart, viewStop, yMin, yMax, logFrequencyAxis, this, smithReadout)
                 }
             }
         }
 
-        // Fit button: restores the full frequency span (dB / Phase / VSWR) or the whole Smith
-        // circle when it has been zoomed. It is highlighted while a view is off its default so
-        // the button visibly does something, and tells the user how to zoom.
-        val zoomed = if (mode == ChartMode.SMITH) {
-            smithView != SmithView.FULL
-        } else {
-            viewStart != config.startHz.toDouble() || viewStop != config.stopHz.toDouble()
+        // Fit button: restores the full frequency span (dB / Phase / VSWR), or the whole Smith
+        // circle / sphere when the reflection view has been zoomed or rotated. It is highlighted
+        // while a view is off its default so the button visibly does something.
+        val zoomed = when (mode) {
+            ChartMode.SMITH -> smithView != SmithView.FULL
+            ChartMode.SMITH_3D -> sphereView != SphereView.DEFAULT
+            else -> viewStart != config.startHz.toDouble() || viewStop != config.stopHz.toDouble()
         }
         IconButton(
             onClick = { resetView() },
@@ -416,14 +539,31 @@ fun VnaChart(
         ) {
             Icon(
                 Icons.Default.CenterFocusStrong,
-                contentDescription = if (mode == ChartMode.SMITH) tr("复位圆图") else tr("缩放至全带宽"),
+                contentDescription = when (mode) {
+                    ChartMode.SMITH -> tr("复位圆图")
+                    ChartMode.SMITH_3D -> tr("复位球图")
+                    else -> tr("缩放至全带宽")
+                },
                 tint = if (zoomed) VnaPrimary else VnaTextMuted,
             )
         }
-        // Zoom readout for the Smith view, so a pinch has visible feedback.
+        // Zoom readout for the reflection views, so a pinch has visible feedback.
         if (mode == ChartMode.SMITH && smithView.span < SmithView.FULL.span) {
             Text(
                 text = String.format("×%.1f", 1f / smithView.span),
+                color = VnaPrimary,
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(end = 46.dp, top = 40.dp)
+                    .background(Color(0xCC0F171D), RoundedCornerShape(5.dp))
+                    .padding(horizontal = 5.dp, vertical = 2.dp),
+            )
+        }
+        if (mode == ChartMode.SMITH_3D && sphereView.zoom != SphereView.DEFAULT.zoom) {
+            Text(
+                text = String.format("×%.1f", sphereView.zoom),
                 color = VnaPrimary,
                 fontSize = 10.sp,
                 fontFamily = FontFamily.Monospace,
@@ -475,7 +615,7 @@ fun VnaChart(
                 if (calibrated) {
                     Text("  CAL", color = VnaPrimary, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
                 }
-                if (mode == ChartMode.VSWR || mode == ChartMode.SMITH) {
+                if (mode == ChartMode.VSWR || mode.isGamma) {
                     Text("  S11/S22", color = VnaTextMuted, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
                 }
             }
@@ -679,6 +819,42 @@ private fun smithGeometry(width: Float, height: Float, density: Density, view: S
     )
 }
 
+/** Projected sphere of the Smith 3D view; the widget square bounds the silhouette. */
+private fun sphereGeometry(width: Float, height: Float, density: Density, view: SphereView): SphereGeometry {
+    val bounds = smithBounds(width, height, density)
+    return SphereGeometry(
+        cx = bounds.center.x,
+        cy = bounds.center.y,
+        radius = bounds.width / 2f * view.zoom.coerceIn(SphereView.MIN_ZOOM, SphereView.MAX_ZOOM),
+        yaw = view.yaw,
+        pitch = view.pitch,
+    )
+}
+
+/** Sphere rotation per pixel of drag, chosen so one screen width spins it a little over a turn. */
+private const val SPHERE_RADIANS_PER_PIXEL = 0.011f
+
+/**
+ * Normalises an angle into (-π, π].
+ *
+ * The sphere's pitch is a real rotation rather than an elevation limit, so it has to be able to run
+ * past the poles and come out the other side: that is what lets the user turn the passive (|Γ| < 1)
+ * hemisphere toward them instead of only being able to look up at it from underneath.
+ */
+private fun wrapAngle(angle: Float): Float {
+    val twoPi = (2.0 * PI).toFloat()
+    var wrapped = angle % twoPi
+    if (wrapped <= -PI.toFloat()) wrapped += twoPi
+    if (wrapped > PI.toFloat()) wrapped -= twoPi
+    return wrapped
+}
+
+/** Constant-|Γ| parallels drawn on the sphere; |Γ| = 1 is the passive/active boundary. */
+private val SPHERE_PARALLELS = listOf(0.2f, 0.4f, 0.6f, 0.8f, 1.4f, 2.2f, 4f)
+
+/** Number of meridians (constant-phase curves) in the wireframe. */
+private const val SPHERE_MERIDIANS = 12
+
 private fun freqToX(freq: Double, geometry: ChartGeometry): Float {
     val start = geometry.viewStart
     val stop = geometry.viewStop
@@ -728,6 +904,63 @@ private fun offsetToGamma(position: Offset, smith: SmithGeometry): Complex {
     val re = smith.focusRE + (position.x - smith.cx) / smith.radius * span
     val im = smith.focusIM - (position.y - smith.cy) / smith.radius * span
     return Complex(re.toDouble(), im.toDouble())
+}
+
+/**
+ * Riemann-sphere projection of a reflection coefficient.
+ *
+ * Γ = 0 lands on the south pole, |Γ| = 1 on the equator and |Γ| → ∞ on the north pole, so the
+ * southern hemisphere is the passive region (|Γ| < 1) and the northern one the active region
+ * (|Γ| > 1) where an amplifier's small-signal S11/S22 moves once the device has gain. The point is
+ * rotated by the view's yaw/pitch and projected orthographically onto the widget.
+ */
+private fun sphereProject(gamma: Complex, geom: SphereGeometry): SpherePoint? {
+    val unit = SmithSphere.toUnitSphere(gamma) ?: return null
+    return sphereProjectUnit(unit[0], unit[1], unit[2], geom)
+}
+
+/** Orthographic projection of a point that already lies on the unit sphere, with the view's rotation. */
+private fun sphereProjectUnit(x: Float, y: Float, z: Float, geom: SphereGeometry): SpherePoint {
+    val projected = SmithSphere.project(x, y, z, geom.yaw, geom.pitch)
+    return SpherePoint(
+        x = geom.cx + projected[0] * geom.radius,
+        y = geom.cy - projected[1] * geom.radius,
+        depth = projected[2],
+    )
+}
+
+/** Points of one constant-|Γ| parallel around the sphere. */
+private fun sphereParallelPoints(magnitude: Float, geom: SphereGeometry, segments: Int = 48): List<SpherePoint> {
+    val lat = SmithSphere.latitudeForMagnitude(magnitude)
+    return (0..segments).map { i ->
+        val lon = (2.0 * PI * i / segments).toFloat()
+        val p = SmithSphere.point(lat, lon)
+        sphereProjectUnit(p[0], p[1], p[2], geom)
+    }
+}
+
+/** Points of one meridian (constant Γ phase), from the south pole to the north pole. */
+private fun sphereMeridianPoints(lon: Float, geom: SphereGeometry, segments: Int = 36): List<SpherePoint> {
+    return (0..segments).map { i ->
+        val lat = (-PI / 2.0 + PI * i / segments).toFloat()
+        val p = SmithSphere.point(lat, lon)
+        sphereProjectUnit(p[0], p[1], p[2], geom)
+    }
+}
+
+/**
+ * Split one projected polyline into the segments facing the viewer and the ones on the far side,
+ * so the sphere reads as a solid while a curve behind it stays faintly traceable.
+ */
+private fun appendSpherePolyline(front: Path, back: Path, points: List<SpherePoint>) {
+    for (i in 0 until points.size - 1) {
+        val a = points[i]
+        val b = points[i + 1]
+        if (!a.finite || !b.finite) continue
+        val path = if ((a.depth + b.depth) * 0.5f >= 0f) front else back
+        path.moveTo(a.x, a.y)
+        path.lineTo(b.x, b.y)
+    }
 }
 
 /**
@@ -1006,7 +1239,7 @@ private fun valueOf(c: Complex, mode: ChartMode): Double = when (mode) {
     ChartMode.DB -> c.magDb()
     ChartMode.PHASE -> c.phaseDeg()
     ChartMode.VSWR -> c.vswr()
-    ChartMode.SMITH -> Double.NaN
+    ChartMode.SMITH, ChartMode.SMITH_3D -> Double.NaN
 }
 
 private fun axisFormat(value: Double, mode: ChartMode): String = when (mode) {
@@ -1152,6 +1385,7 @@ private fun DrawScope.drawXyCrosshair(
     yMax: Double,
     logX: Boolean,
     density: Density,
+    readout: SmithReadout = SmithReadout.IMAGINARY,
 ) {
     if (result == null) return
     val geometry = ChartGeometry(plot, viewStart, viewStop, yMin, yMax, logX)
@@ -1181,7 +1415,9 @@ private fun DrawScope.drawXyCrosshair(
                 ChartMode.DB -> p.label + "  " + String.format("%.1f dB", c.magDb())
                 ChartMode.PHASE -> p.label + "  " + String.format("%.1f°", c.phaseDeg())
                 ChartMode.VSWR -> p.label + "  " + String.format("%.2f", c.vswr())
-                ChartMode.SMITH -> p.label + "  " + String.format("|Γ| %.3f", c.abs())
+                ChartMode.SMITH, ChartMode.SMITH_3D ->
+                    p.label + "  " + String.format(Locale.US, "|Γ| %.3f", c.abs()) +
+                        formatSmithReadout(c, readout)
             },
         )
     }
@@ -1217,32 +1453,46 @@ private fun DrawScope.drawSmith(
  * Constant-resistance/constant-reactance grid, mapped through the current (possibly zoomed)
  * Smith viewport so it scales with the traces when the user pinches.
  */
+/**
+ * Constant-resistance/constant-reactance grid, mapped through the current (possibly zoomed and
+ * panned) Smith viewport so the whole grid - the resistance circles included - scales and
+ * travels with the traces.
+ *
+ * Every circle centre goes through [gammaToOffset] on purpose. Hand-rolled vertical arithmetic
+ * used to pin the constant-resistance circles to the widget's middle line, so a vertical pan
+ * moved the reactance arcs and the trace while the resistance base map stayed behind; routing
+ * both families through the same Γ -> screen mapping keeps them one image of the same plane.
+ */
 private fun DrawScope.drawSmithGrid(smith: SmithGeometry, grid: Color, density: Density) {
-    // Constant-resistance circles: centre (r/(1+r), 0), radius 1/(1+r) in Γ units.
+    val span = smith.span.coerceAtLeast(1e-6f)
+    // Constant-resistance circles: Γ centre (r/(1+r), 0), radius 1/(1+r).
     for (r in GRID_RESISTANCES) {
-        val span = smith.span.coerceAtLeast(1e-6f)
-        val gcx = smith.cx + ((r / (1f + r) - smith.focusRE) / span * smith.radius).toFloat()
-        val radius = (1f / (1f + r) / span * smith.radius).toFloat()
-        drawCircle(grid, radius = radius, center = Offset(gcx, smith.cy), style = Stroke(1f))
+        val centre = gammaToOffset(Complex((r / (1f + r)).toDouble(), 0.0), smith)
+        drawCircle(grid, radius = 1f / (1f + r) / span * smith.radius, center = centre, style = Stroke(1f))
     }
-    // Constant-reactance circles: centre (1, ±1/x), radius 1/|x| in Γ units.
+    // Constant-reactance circles: Γ centre (1, 1/x), radius 1/|x|.
     for (x0 in GRID_REACTANCES) {
-        val gcx = smith.cx + ((1f - smith.focusRE) / smith.span.coerceAtLeast(1e-6f) * smith.radius).toFloat()
-        val gcy = smith.cy - ((-1f / x0 - smith.focusIM) / smith.span.coerceAtLeast(1e-6f) * smith.radius).toFloat()
-        val radius = (1f / abs(x0) / smith.span.coerceAtLeast(1e-6f) * smith.radius).toFloat()
-        drawCircle(grid, radius = radius, center = Offset(gcx, gcy), style = Stroke(1f))
+        val centre = gammaToOffset(Complex(1.0, (1f / x0).toDouble()), smith)
+        drawCircle(grid, radius = 1f / abs(x0) / span * smith.radius, center = centre, style = Stroke(1f))
     }
-    // The real axis is the horizontal line through the Smith centre (Γ imaginary = 0).
-    val yAxis = smith.cy - (-smith.focusIM / smith.span.coerceAtLeast(1e-6f) * smith.radius).toFloat()
-    drawLine(grid, Offset(smith.cx - smith.radius, yAxis), Offset(smith.cx + smith.radius, yAxis), strokeWidth = 1f)
+    // The |Γ| = 1 rim. In the untouched view it coincides with the widget border, so it is only
+    // drawn once the user has zoomed or panned away from it - otherwise the boundary between the
+    // passive and active regions would silently leave the screen.
+    if (smith.span < 1f || smith.focusRE != 0f || smith.focusIM != 0f) {
+        val centre = gammaToOffset(Complex(0.0, 0.0), smith)
+        drawCircle(VnaOutline, radius = smith.radius / span, center = centre, style = Stroke(1.2f))
+    }
+    // The real axis is the horizontal line through the Smith centre (Γ = 0).
+    val axis = gammaToOffset(Complex(0.0, 0.0), smith)
+    drawLine(grid, Offset(smith.cx - smith.radius, axis.y), Offset(smith.cx + smith.radius, axis.y), strokeWidth = 1f)
 
     // Real-axis labels (0, 1, 2, 5 Ω) when they fall inside the visible window.
     val labelPaint = textPaint(VnaTextMuted, 9.5f, density)
     for ((r, label) in listOf(0.0f to "0", 1.0f to "1", 2.0f to "2", 5.0f to "5")) {
         val re = r / (1f + r)
-        val x = smith.cx + ((re - smith.focusRE) / smith.span.coerceAtLeast(1e-6f) * smith.radius).toFloat()
+        val x = smith.cx + (re - smith.focusRE) / span * smith.radius
         if (x !in (smith.cx - smith.radius)..(smith.cx + smith.radius)) continue
-        drawTextAt(label, x, yAxis + 16.dp.toPx(), labelPaint, alignCenter = true)
+        drawTextAt(label, x, axis.y + 16.dp.toPx(), labelPaint, alignCenter = true)
     }
 }
 
@@ -1292,6 +1542,136 @@ private fun DrawScope.drawSmithTraces(
 /** Normalised-resistance grid families (r = R/Z0) for the Smith chart. */
 private val GRID_RESISTANCES = listOf(0.0f, 0.2f, 0.5f, 1.0f, 2.0f, 5.0f)
 
+/**
+ * Wireframe and traces of the Smith sphere.
+ *
+ * The sphere is the Riemann sphere of Γ: the passive half (|Γ| < 1) is the southern hemisphere and
+ * the active half (|Γ| > 1) the northern one. That is what makes it useful for amplifier work - a
+ * device with gain puts its input/output reflection coefficient outside the unit circle, where the
+ * flat Smith chart has no room at all.
+ */
+private fun DrawScope.drawSmithSphere(
+    result: SweepResult?,
+    enabled: Set<SParam>,
+    markers: List<Marker>,
+    sphere: SphereGeometry,
+    watermark: Boolean,
+    density: Density,
+    focusedMarkerId: Int? = null,
+) {
+    val grid = Color(0xFF2A3A45)
+    val centre = Offset(sphere.cx, sphere.cy)
+    val widget = Path().apply {
+        addOval(
+            Rect(
+                sphere.cx - sphere.radius, sphere.cy - sphere.radius,
+                sphere.cx + sphere.radius, sphere.cy + sphere.radius,
+            ),
+        )
+    }
+    drawCircle(Color(0xFF0F171D), radius = sphere.radius, center = centre)
+    if (watermark) {
+        drawWatermark(
+            Rect(
+                sphere.cx - sphere.radius, sphere.cy - sphere.radius,
+                sphere.cx + sphere.radius, sphere.cy + sphere.radius,
+            ),
+            density,
+        )
+    }
+
+    // Wireframe: parallels of constant |Γ| plus meridians of constant Γ phase.
+    val back = Path()
+    val front = Path()
+    for (magnitude in SPHERE_PARALLELS) appendSpherePolyline(front, back, sphereParallelPoints(magnitude, sphere))
+    for (i in 0 until SPHERE_MERIDIANS) {
+        val lon = (2.0 * PI * i / SPHERE_MERIDIANS).toFloat()
+        appendSpherePolyline(front, back, sphereMeridianPoints(lon, sphere))
+    }
+    drawPath(back, grid.copy(alpha = 0.20f), style = Stroke(0.9f))
+    drawPath(front, grid.copy(alpha = 0.62f), style = Stroke(0.9f))
+
+    // The |Γ| = 1 equator separates the passive and active hemispheres; it is the one ring that
+    // has to be unambiguous, so it keeps its own colour.
+    val equatorBack = Path()
+    val equatorFront = Path()
+    appendSpherePolyline(equatorFront, equatorBack, sphereParallelPoints(1f, sphere))
+    drawPath(equatorBack, VnaOutline.copy(alpha = 0.35f), style = Stroke(1.2f))
+    drawPath(equatorFront, VnaOutline, style = Stroke(1.5f))
+
+    clipPath(widget) {
+        if (result != null) drawSphereTraces(result, enabled, markers, sphere, density, focusedMarkerId)
+    }
+    drawPath(widget, color = VnaOutline, style = Stroke(1.4f))
+    drawSpherePoleLabels(sphere, density)
+}
+
+/** Traces and markers on the sphere, with the far side dimmed instead of hidden. */
+private fun DrawScope.drawSphereTraces(
+    result: SweepResult,
+    enabled: Set<SParam>,
+    markers: List<Marker>,
+    sphere: SphereGeometry,
+    density: Density,
+    focusedMarkerId: Int?,
+) {
+    for (p in enabled) {
+        if (p == SParam.S21 || p == SParam.S12) continue
+        val arr = result.param(p)
+        val front = Path()
+        val back = Path()
+        var previous: SpherePoint? = null
+        for (i in result.freqHz.indices) {
+            val point = sphereProject(arr[i], sphere)
+            if (point == null) {
+                previous = null
+                continue
+            }
+            val prev = previous
+            if (prev != null) {
+                val path = if ((prev.depth + point.depth) * 0.5f >= 0f) front else back
+                path.moveTo(prev.x, prev.y)
+                path.lineTo(point.x, point.y)
+            }
+            previous = point
+        }
+        drawPath(back, p.color.copy(alpha = 0.30f), style = Stroke(1.6.dp.toPx(), cap = StrokeCap.Round))
+        drawPath(front, p.color, style = Stroke(2.2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+    }
+    for (marker in markers) {
+        val index = result.nearestIndex(marker.freqHz)
+        val c = result.s11.getOrNull(index) ?: continue
+        val point = sphereProject(c, sphere) ?: continue
+        val far = point.depth < 0f
+        val dot = (if (far) 2.6f else 3.6f).dp.toPx()
+        drawCircle(Color.White.copy(alpha = if (far) 0.35f else 1f), radius = dot, center = Offset(point.x, point.y))
+        if (!far) {
+            if (marker.id == focusedMarkerId) {
+                drawCircle(
+                    VnaSecondary.copy(alpha = 0.85f),
+                    radius = 9.dp.toPx(),
+                    center = Offset(point.x, point.y),
+                    style = Stroke(1.6.dp.toPx()),
+                )
+            }
+            drawTextAt("M" + marker.id, point.x + 6.dp.toPx(), point.y - 6.dp.toPx(), textPaint(VnaSecondary, 10f, density))
+        }
+    }
+}
+
+/** Labels the passive (southern) and active (northern) hemispheres, when they face the viewer. */
+private fun DrawScope.drawSpherePoleLabels(sphere: SphereGeometry, density: Density) {
+    val paint = textPaint(VnaTextMuted, 9.5f, density)
+    val north = sphereProjectUnit(0f, 0f, 1f, sphere)
+    val south = sphereProjectUnit(0f, 0f, -1f, sphere)
+    if (north.depth > -0.8f) {
+        drawTextAt("|Γ|>1", north.x, north.y - 4.dp.toPx(), paint, alignCenter = true)
+    }
+    if (south.depth > -0.8f) {
+        drawTextAt("|Γ|<1", south.x, south.y + 14.dp.toPx(), paint, alignCenter = true)
+    }
+}
+
 /** Normalised-reactance grid families (x = X/Z0); both signs draw their own circle. */
 private val GRID_REACTANCES = listOf(-5.0f, -2.0f, -1.0f, -0.5f, -0.2f, 0.2f, 0.5f, 1.0f, 2.0f, 5.0f)
 
@@ -1302,6 +1682,7 @@ private fun DrawScope.drawSmithCrosshair(
     smith: SmithGeometry,
     plot: Rect,
     density: Density,
+    readout: SmithReadout,
 ) {
     if (result == null) return
     val index = result.nearestIndex(frequency)
@@ -1312,7 +1693,7 @@ private fun DrawScope.drawSmithCrosshair(
     drawCircle(VnaPrimary, radius = 6.dp.toPx(), center = o, style = Stroke(1.5.dp.toPx()))
     val lines = listOf(
         formatFrequency(result.freqHz.getOrNull(index)?.toDouble() ?: frequency, 4),
-        String.format("|Γ| %.3f ∠%.0f°", c.abs(), c.phaseDeg()),
+        String.format(Locale.US, "|Γ| %.3f", c.abs()) + formatSmithReadout(c, readout),
         String.format("VSWR %.2f", c.vswr()),
     )
     drawTooltip(lines, o.x, plot, density)

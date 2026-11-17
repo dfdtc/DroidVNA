@@ -9,7 +9,7 @@
 小米/红米/HyperOS 报 `INSTALL_FAILED_USER_RESTRICTED: Install canceled by user` 时，可使用 shell 安装方式（本机验证可用）：
 
 ```bash
-adb push dist/DroidVNA-0.7.2-beta-release.apk /data/local/tmp/droidvna.apk
+adb push dist/DroidVNA-0.7.4-release.apk /data/local/tmp/droidvna.apk
 adb shell pm install -r -t /data/local/tmp/droidvna.apk
 ```
 
@@ -28,7 +28,7 @@ adb shell pm install -r -t /data/local/tmp/droidvna.apk
 | 小米/HyperOS 安装失败 | 用 `adb push` + `pm install`，或打开开发者选项的 USB 安装 |
 | 导出文件带 `.txt` 后缀 | 旧版本问题；当前版本使用 `application/octet-stream`，会保留 `.s2p` |
 | 校准后曲线没变化 | 确认捕获时标准件确实连接；注意校准只在已保存的频率范围内插值；尝试清除校准重做 |
-| B60 连上后一直没有点/每 2 秒 status | 这是 B60 的 `extTrigger` 残留问题（旧版本把 31 字节的 `SweepSettings` 当完整结构，固件沿用缓冲区里上次的触发计数值）；当前版本固定发送 32 字节并把 `extTrigger` 写成 0。若仍无数据，应用会在 6 秒后重发配置 2 次，之后提示重新插拔 |
+| B60 连上后一直没有点/每 2 秒 status | 这是 B60 的 `extTrigger` 残留问题（旧版本把 31 字节的 `SweepSettings` 当完整结构，固件沿用缓冲区里上次的触发计数值）；当前版本对 B60 发送 32 字节并把 `extTrigger` 写成 0（其他 LibreVNA 设备仍发上游标准 31 字节）。若仍无数据，应用会在 6 秒后重发配置 2 次，之后提示重新插拔 |
 | B60 扫描很慢 | 检查 IFBW；先用默认 75 kHz 快速查看。需要低噪声时再降到 1 kHz / 100 Hz / 15 Hz，首帧会更慢，但图表会逐步出点且「采集」旁有呼吸灯 |
 | E-Cal 报「端口 X OPEN/SHORT/LOAD 没有扫描数据」 | 采集超时以前固定 8 秒，而低 IFBW / 多点数的**一遍完整扫描**可能远超 8 秒（例如 15 Hz + 2001 点约 2–7 分钟）。现在超时按点数/IFBW 自动放大（约 2 个扫描周期），并每秒显示「已采集 x/2001 点…」。若仍失败，看「设备 → 日志」里是否 `Capturing …` 之后完全没有数据点：那才是 VNA 真的没出数（检查 extTrigger/连接与 USB 供电） |
 | E-Cal 在低 IFBW 下很慢 | 正常：E-Cal 用当前扫描设置，每个标准都要等至少一遍完整扫描。想快就临时把 IFBW 提到 30–75 kHz、点数降到 401，校准完再改回来 |

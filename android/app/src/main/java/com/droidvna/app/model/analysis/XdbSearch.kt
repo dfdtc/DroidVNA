@@ -19,9 +19,24 @@ enum class XdbSide(val label: String) {
     val searchesRight: Boolean get() = this != LEFT
 }
 
+/**
+ * Where the target level sits relative to the reference.
+ *
+ * [BELOW] is the classic notch/passband edge search ("3 dB down from the peak"); [ABOVE] walks
+ * the other way and is what an antenna bandwidth measurement needs, because there the reference
+ * is the dip of |S11| and the band edges lie above it.
+ */
+enum class XdbDirection(val sign: String) {
+    BELOW("−"),
+    ABOVE("+");
+
+    val above: Boolean get() = this == ABOVE
+}
+
 /** Where the reference level for an XdB search comes from. */
 enum class XdbReferenceMode(val label: String) {
     PEAK("峰值"),
+    VALLEY("谷值"),
     CURSOR("游标"),
 }
 
@@ -52,12 +67,13 @@ data class XdbCrossing(
  */
 data class XdbSearchResult(
     val reference: XdbCursor,
-    /** Positive magnitude of the requested drop below [XdbCursor.levelDb]. */
+    /** Positive magnitude of the requested offset from [XdbCursor.levelDb]. */
     val dropDb: Double,
     val targetLevelDb: Double,
     val lower: XdbCrossing?,
     val upper: XdbCrossing?,
     val side: XdbSide,
+    val direction: XdbDirection,
 ) {
     val bandwidthHz: Double?
         get() = if (lower != null && upper != null) upper.frequencyHz - lower.frequencyHz else null
@@ -73,22 +89,43 @@ data class XdbSearchResult(
  * XdB marker search on a scalar dB trace.
  *
  * This is the core behind both the bandwidth search and the XdB search: find the level
- * `reference - dropDb`, then walk towards lower and/or higher frequencies until the trace
- * crosses it. The first crossing next to the reference wins, which keeps the result stable
- * for ripple inside the pass band. The exact crossing is interpolated in the dB domain.
+ * `reference ± dropDb` (see [XdbDirection]), then walk towards lower and/or higher frequencies
+ * until the trace crosses it. The first crossing next to the reference wins, which keeps the
+ * result stable for ripple inside the pass band. The exact crossing is interpolated in the dB
+ * domain.
+ *
+ * Two shapes are common: a filter pass band is bounded by the level *below* the peak
+ * ([XdbDirection.BELOW] + [peakCursor]), while an antenna's bandwidth is bounded by the level
+ * *above* the dip of |S11| ([XdbDirection.ABOVE] + [valleyCursor]).
  */
 object XdbSearch {
 
     /** Reference cursor on the global maximum of a trace, or null when it has no finite point. */
-    fun peakCursor(freqHz: LongArray, values: Array<Complex>): XdbCursor? {
+    fun peakCursor(freqHz: LongArray, values: Array<Complex>): XdbCursor? =
+        extremeCursor(freqHz, values, highest = true)
+
+    /**
+     * Reference cursor on the global minimum of a trace (the dip of an antenna's |S11|), or null
+     * when it has no finite point.
+     */
+    fun valleyCursor(freqHz: LongArray, values: Array<Complex>): XdbCursor? =
+        extremeCursor(freqHz, values, highest = false)
+
+    private fun extremeCursor(
+        freqHz: LongArray,
+        values: Array<Complex>,
+        highest: Boolean,
+    ): XdbCursor? {
         if (freqHz.isEmpty() || freqHz.size != values.size) return null
         var bestIndex = -1
-        var bestLevel = Double.NEGATIVE_INFINITY
+        var bestLevel = if (highest) Double.NEGATIVE_INFINITY else Double.POSITIVE_INFINITY
         for (i in values.indices) {
             val value = values[i]
             if (!value.isFinite()) continue
             val level = value.magDb()
-            if (level.isFinite() && level > bestLevel) {
+            if (!level.isFinite()) continue
+            val better = if (highest) level > bestLevel else level < bestLevel
+            if (better) {
                 bestLevel = level
                 bestIndex = i
             }
@@ -114,11 +151,12 @@ object XdbSearch {
     }
 
     /**
-     * Searches [dropDb] below [reference] on the requested side(s).
+     * Searches [dropDb] above or below [reference] on the requested side(s).
      *
-     * [dropDb] is positive (3.0 means "3 dB below the reference"). Returns null only for
-     * malformed input; when no edge is found the corresponding crossing is null and the
-     * caller can report how many edges were actually found.
+     * [dropDb] is positive (3.0 means "3 dB below the reference" for [XdbDirection.BELOW] and
+     * "3 dB above it" for [XdbDirection.ABOVE]). Returns null only for malformed input; when no
+     * edge is found the corresponding crossing is null and the caller can report how many edges
+     * were actually found.
      */
     fun search(
         freqHz: LongArray,
@@ -126,20 +164,21 @@ object XdbSearch {
         reference: XdbCursor,
         dropDb: Double,
         side: XdbSide,
+        direction: XdbDirection = XdbDirection.BELOW,
     ): XdbSearchResult? {
         if (freqHz.isEmpty() || freqHz.size != values.size) return null
         if (reference.index !in values.indices) return null
         if (!values[reference.index].isFinite()) return null
         if (!dropDb.isFinite() || dropDb <= 0.0) return null
 
-        val target = reference.levelDb - dropDb
+        val target = if (direction.above) reference.levelDb + dropDb else reference.levelDb - dropDb
         val lower = if (side.searchesLeft) {
-            findCrossing(freqHz, values, reference.index, target, -1, XdbSide.LEFT)
+            findCrossing(freqHz, values, reference.index, target, -1, XdbSide.LEFT, direction)
         } else {
             null
         }
         val upper = if (side.searchesRight) {
-            findCrossing(freqHz, values, reference.index, target, +1, XdbSide.RIGHT)
+            findCrossing(freqHz, values, reference.index, target, +1, XdbSide.RIGHT, direction)
         } else {
             null
         }
@@ -150,6 +189,7 @@ object XdbSearch {
             lower = lower,
             upper = upper,
             side = side,
+            direction = direction,
         )
     }
 
@@ -165,6 +205,7 @@ object XdbSearch {
         targetDb: Double,
         direction: Int,
         side: XdbSide,
+        offset: XdbDirection,
     ): XdbCrossing? {
         var index = referenceIndex
         var previousLevel = values[index].magDb()
@@ -176,7 +217,8 @@ object XdbSearch {
             if (!value.isFinite()) return null
             val level = value.magDb()
             if (!level.isFinite()) return null
-            if (level <= targetDb) {
+            val crossed = if (offset.above) level >= targetDb else level <= targetDb
+            if (crossed) {
                 val f0 = freqHz[index].toDouble()
                 val f1 = freqHz[next].toDouble()
                 val denominator = previousLevel - level

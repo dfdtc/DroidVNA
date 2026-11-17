@@ -20,8 +20,10 @@ data class PersistedSettings(
     val logFrequencyAxis: Boolean = false,
     /** Hide the "DroidVNA" watermark drawn behind the trace chart. */
     val hideWatermark: Boolean = false,
-    /** Chart mode key (DB / PHASE / VSWR / SMITH). */
+    /** Chart mode key (DB / PHASE / VSWR / SMITH / SMITH_3D). */
     val chartMode: String = "DB",
+    /** What a Smith readout shows next to |Γ|: IMAGINARY (default) or PHASE. */
+    val smithReadout: String = "IMAGINARY",
     /** Trace parameters that are switched on. */
     val enabledParams: Set<String> = setOf("S11", "S21"),
     /** Auto Y scaling; manual after a pinch and restored to auto on request. */

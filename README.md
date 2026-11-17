@@ -16,21 +16,21 @@ DroidVNA is a touch-first, native Android USB host client for LibreVNA and Harog
 
 ## 项目状态
 
-- 当前版本 **0.7.2-beta**（versionCode 11），要求 Android 8.0（API 26）及以上；compileSdk / targetSdk 36。
-- 0.7.2-beta 修复协议与校准可靠性：B60 的 `SweepSettings` 固定发送 32 字节（含 `extTrigger` 扩展字节）、移除 SA 复位规避、E-Cal 采集超时按扫描时间自适应；0.7.1 的标记分析工具功能不变。
-- 12 项 SOLT 的 E-Cal 自动流程已在真机（Harogic B60 + ECB-60）上跑通并成功应用，但**绝对精度尚未与桌面版 / 已知 DUT 对照**，**手动 SOLT 流程尚未上机**（缺机械校准件），因此本版标记为 **beta**；LibreVNA 官方硬件尚未上机实测。
+- 当前版本 **0.7.4**（versionCode 13），要求 Android 8.0（API 26）及以上；compileSdk / targetSdk 36。
+- 0.7.4 修 Smith 圆图「拖动只动一半」的问题，新增 Smith 3D 球图（放大器调谐）、Smith 读数虚部/角度切换、XdB 搜索的 `+X dB` 与「谷值」参考（天线带宽）、双标记 `Δf`；`SweepSettings` 改为默认发上游 31 字节包、仅 B60 发 32 字节。
+- 12 项 SOLT 的 E-Cal 自动流程已在真机（Harogic B60 + ECB-60）上跑通并成功应用，但**绝对精度尚未与桌面版 / 已知 DUT 对照**，**手动 SOLT 流程尚未上机**（缺机械校准件）；LibreVNA 官方硬件尚未上机实测。
 - 详细验证记录见 [测试与验证](docs/TESTING.md)，变更见 [CHANGELOG.md](CHANGELOG.md) 与 [Release Notes](docs/release-notes/)。
 
 ## 功能
 
 - **实时双端口扫描**：S11 / S21 / S12 / S22，连续扫描或单次扫描，可暂停/恢复；低 IFBW 下边扫边画、环形滚动更新，图表不会每帧清空。
-- **触摸优先的图表**：双指缩放/平移、单指十字光标读数、dB / 相位 / VSWR / Smith 四种模式；标记可拖动、峰值/谷值搜索、双标记 Δ。
-- **标记分析**：标记行旁的「分析」菜单提供带宽搜索、XdB 搜索（左/右/双侧）与 DTF（加窗 IFFT，故障距离曲线与故障点列表）。
+- **触摸优先的图表**：双指缩放/平移、单指十字光标读数、dB / 相位 / VSWR / Smith / Smith 3D 五种模式；标记可拖动、峰值/谷值搜索、双标记 Δ（幅度差与频率差）。
+- **标记分析**：标记行旁的「分析」菜单提供带宽搜索、XdB 搜索（左/右/双侧，支持 ±X dB 与谷值参考）与 DTF（加窗 IFFT，故障距离曲线与故障点列表）。
 - **完整校准链路**：1 端口 SOL、THRU 归一化、完整 12 项双端口 SOLT（可选隔离测量）、LibreCAL / ECB-60 电子校准件、LibreVNA-GUI `.cal` 导入；结果按设备序列号保存并在下次启动时自动载入。
 - **数据导出**：Touchstone `.s2p` / `.s1p` 与 CSV，保存到 `Download/DroidVNA`，也可通过系统分享发送。
 - **触屏界面**：右上角 `⋮` 统一菜单、可收起控件行、横屏竖排采集栏、背景水印；扫描参数、标记、图表模式和界面语言自动记忆。
 - **中英双语**：跟随系统 / 中文 / English 即时切换并持久化。
-- **即插即用**：识别 LibreVNA V1 / P2 / PT 与 Harogic B60（LibreVNA USB 协议 v14），提供 USB 诊断与设备日志；B60 固定发送 32 字节 `SweepSettings`（含 `extTrigger` 扩展字节），配置无响应时会自动重发。
+- **即插即用**：识别 LibreVNA V1 / P2 / PT 与 Harogic B60（LibreVNA USB 协议 v14），提供 USB 诊断与设备日志；`SweepSettings` 按设备选包长（上游标准 31 字节，B60 额外带 `extTrigger` 共 32 字节），配置无响应时会自动重发。
 - **演示模式**：内置 1.75–2.65 GHz 带通滤波器 DUT 和真实误差模型，没有硬件也能完整走通校准与导出。
 
 完整功能与操作说明见 [使用指南](docs/USER-GUIDE.md)。
@@ -49,11 +49,11 @@ DroidVNA is a touch-first, native Android USB host client for LibreVNA and Harog
 
 ## 下载与安装
 
-- 从 [Releases](https://github.com/dfdtc/DroidVNA/releases) 下载最新 APK，或使用仓库内的 [dist/DroidVNA-0.7.2-beta-release.apk](dist/DroidVNA-0.7.2-beta-release.apk)。
+- 从 [Releases](https://github.com/dfdtc/DroidVNA/releases) 下载最新 APK，或使用仓库内的 [dist/DroidVNA-0.7.4-release.apk](dist/DroidVNA-0.7.4-release.apk)。
 - 要求：Android 8.0（API 26）及以上、支持 USB Host / OTG 的设备与数据线，VNA 固件协议版本 14。
 
 ```bash
-adb install -r dist/DroidVNA-0.7.2-beta-release.apk
+adb install -r dist/DroidVNA-0.7.4-release.apk
 ```
 
 该 APK 是 release 构建，使用项目发布密钥签署（证书 CN=Houran CHEN）；换用别的 keystore 重新签名后无法覆盖安装，只能先卸载。签名流程见 [发布流程](docs/RELEASING.md)。

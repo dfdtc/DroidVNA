@@ -49,6 +49,7 @@ class SettingsStore(context: Context) {
                 logFrequencyAxis = root.optBoolean("logFrequencyAxis", defaults.logFrequencyAxis),
                 hideWatermark = root.optBoolean("hideWatermark", defaults.hideWatermark),
                 chartMode = root.optString("chartMode", defaults.chartMode),
+                smithReadout = root.optString("smithReadout", defaults.smithReadout),
                 enabledParams = params?.takeIf { it.isNotEmpty() } ?: defaults.enabledParams,
                 chartAutoY = root.optBoolean("chartAutoY", defaults.chartAutoY),
                 markerFreqs = markers ?: defaults.markerFreqs,
@@ -91,6 +92,7 @@ class SettingsStore(context: Context) {
             root.put("logFrequencyAxis", settings.logFrequencyAxis)
             root.put("hideWatermark", settings.hideWatermark)
             root.put("chartMode", settings.chartMode)
+            root.put("smithReadout", settings.smithReadout)
             root.put("enabledParams", JSONArray(settings.enabledParams.toList()))
             root.put("chartAutoY", settings.chartAutoY)
             root.put("markerFreqs", JSONArray(settings.markerFreqs))

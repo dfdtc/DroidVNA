@@ -21,7 +21,8 @@
 
 ## 验证状态
 
-当前版本标记为 **beta** 的原因与实机验证记录见 [测试与验证](TESTING.md) 和 [0.7.2-beta Release Notes](release-notes/0.7.2-beta.md)。
+实机验证记录见 [测试与验证](TESTING.md)，本版改动见 [0.7.4 Release Notes](release-notes/0.7.4.md)。
+仍未闭环的两项（12 项 SOLT 的绝对精度对照、手动 SOLT 上机）在该 Release Notes 的「尚未验证」小节里。
 
 ## 后续方向
 

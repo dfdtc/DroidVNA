@@ -9,7 +9,7 @@ First note the app version, Android version, VNA / E-Cal model and firmware, the
 If Xiaomi/Redmi/HyperOS reports `INSTALL_FAILED_USER_RESTRICTED: Install canceled by user`, use shell installation (verified on our test devices):
 
 ```bash
-adb push dist/DroidVNA-0.7.2-beta-release.apk /data/local/tmp/droidvna.apk
+adb push dist/DroidVNA-0.7.4-release.apk /data/local/tmp/droidvna.apk
 adb shell pm install -r -t /data/local/tmp/droidvna.apk
 ```
 
@@ -28,7 +28,7 @@ If installation reports a signature mismatch, an older build signed with a diffe
 | Xiaomi/HyperOS installation fails | Use `adb push` + `pm install`, or enable Install via USB in Developer options |
 | Exported file has a `.txt` suffix | Older-version issue; current builds use `application/octet-stream` and keep `.s2p` |
 | Trace does not change after calibration | Make sure the standards were really connected when captured; calibration only interpolates within the saved frequency range; try clearing the calibration and redoing it |
-| B60 shows no points / a status every 2 seconds | This is the B60 `extTrigger` residue (older versions treated the 31-byte `SweepSettings` as complete, so the firmware kept the trigger count a previous packet left in its shared buffer); the current version always sends 32 bytes with `extTrigger` set to 0. If there is still no data, the app re-sends the configuration twice after 6 seconds and then suggests replugging |
+| B60 shows no points / a status every 2 seconds | This is the B60 `extTrigger` residue (older versions treated the 31-byte `SweepSettings` as complete, so the firmware kept the trigger count a previous packet left in its shared buffer); the current version sends 32 bytes to the B60 with `extTrigger` set to 0 (other LibreVNA devices still get the upstream 31-byte packet). If there is still no data, the app re-sends the configuration twice after 6 seconds and then suggests replugging |
 | B60 sweeps very slowly | Check IFBW; start with the default 75 kHz. For lower noise drop to 1 kHz / 100 Hz / 15 Hz; the first frame is slower, but points appear progressively and the breathing indicator is shown next to "Acquisition" |
 | E-Cal reports "port X OPEN/SHORT/LOAD has no scan data" | The capture timeout used to be a fixed 8 s, but one **complete sweep** at low IFBW / many points can take far longer (e.g. 15 Hz + 2001 points is about 2–7 minutes). The timeout now scales with points/IFBW (about two sweep periods) and shows "已采集 x/2001 点…" every second. If it still fails, check Device → Log: no datapoints at all after `Capturing …` means the VNA really produced none (check extTrigger/connection/USB power) |
 | E-Cal is very slow at low IFBW | Expected: E-Cal uses the current sweep settings, so every standard waits for at least one complete sweep. For a quicker run raise IFBW to 30–75 kHz and drop to 401 points, then restore your settings |

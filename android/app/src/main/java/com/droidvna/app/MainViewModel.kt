@@ -42,6 +42,7 @@ import com.droidvna.app.model.analysis.Dtf
 import com.droidvna.app.model.analysis.DtfConfig
 import com.droidvna.app.model.analysis.DtfResult
 import com.droidvna.app.model.analysis.DtfWindow
+import com.droidvna.app.model.analysis.XdbDirection
 import com.droidvna.app.model.analysis.XdbReferenceMode
 import com.droidvna.app.model.analysis.XdbSearch
 import com.droidvna.app.model.analysis.XdbSearchResult
@@ -49,6 +50,7 @@ import com.droidvna.app.model.analysis.XdbSide
 import com.droidvna.app.model.formatDb
 import com.droidvna.app.model.formatFrequency
 import com.droidvna.app.ui.chart.ChartMode
+import com.droidvna.app.ui.chart.SmithReadout
 import com.droidvna.app.ui.text.AppLanguage
 import com.droidvna.app.usb.EcalDevice
 import com.droidvna.app.usb.EcalSnapshot
@@ -122,6 +124,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val chartAutoY = MutableStateFlow(initialSettings.chartAutoY)
     val chartMode = MutableStateFlow(
         ChartMode.entries.firstOrNull { it.name == initialSettings.chartMode } ?: ChartMode.DB
+    )
+    /** What a Smith readout prints next to |Γ|: the imaginary part or the phase angle. */
+    val smithReadout = MutableStateFlow(
+        SmithReadout.entries.firstOrNull { it.name == initialSettings.smithReadout }
+            ?: SmithReadout.IMAGINARY
     )
     val enabledParams = MutableStateFlow(
         initialSettings.enabledParams.mapNotNull { name -> SParam.entries.firstOrNull { it.name == name } }
@@ -277,6 +284,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             logFrequencyAxis,
             hideWatermark,
             chartMode,
+            smithReadout,
             enabledParams,
             chartAutoY,
             markers,
@@ -312,6 +320,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             logFrequencyAxis = logFrequencyAxis.value,
             hideWatermark = hideWatermark.value,
             chartMode = chartMode.value.name,
+            smithReadout = smithReadout.value.name,
             enabledParams = enabledParams.value.map { it.name }.toSet(),
             chartAutoY = chartAutoY.value,
             markerFreqs = markers.value.map { it.freqHz },
@@ -494,7 +503,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun peakMarker() {
         val sweep = repo.sweep.value ?: return
-        val reflectionMode = chartMode.value == ChartMode.VSWR || chartMode.value == ChartMode.SMITH
+        val reflectionMode = chartMode.value == ChartMode.VSWR || chartMode.value.isGamma
         val param = when {
             reflectionMode && enabledParams.value.contains(SParam.S11) -> SParam.S11
             !reflectionMode && enabledParams.value.contains(SParam.S21) -> SParam.S21
@@ -1324,7 +1333,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      *
      * Bandwidth search is the [XdbSide.BOTH] case of this routine, so both menu entries share
      * one implementation. [dropDb] is entered as a positive number (3.0 = "3 dB below the
-     * reference").
+     * reference" for [XdbDirection.BELOW], "3 dB above it" for [XdbDirection.ABOVE]).
      */
     fun runXdbSearch(
         trace: SParam,
@@ -1332,6 +1341,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         cursorMarkerId: Int?,
         dropDb: Double,
         side: XdbSide,
+        direction: XdbDirection = XdbDirection.BELOW,
     ) {
         val sweep = repo.sweep.value
         if (sweep == null) {
@@ -1347,6 +1357,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val values = sweep.param(trace)
         val reference = when (referenceMode) {
             XdbReferenceMode.PEAK -> XdbSearch.peakCursor(sweep.freqHz, values)
+            XdbReferenceMode.VALLEY -> XdbSearch.valleyCursor(sweep.freqHz, values)
             XdbReferenceMode.CURSOR -> {
                 val marker = markers.value.firstOrNull { it.id == cursorMarkerId }
                     ?: markers.value.firstOrNull()
@@ -1363,20 +1374,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             xdbMessage.value = "当前迹线没有可用数据"
             return
         }
-        val result = XdbSearch.search(sweep.freqHz, values, reference, dropDb, side)
+        val result = XdbSearch.search(sweep.freqHz, values, reference, dropDb, side, direction)
         removeAnalysisMarkers()
         if (result != null) {
             result.lower?.let { analysisMarkerIds.add(addMarker(it.frequencyHz).id) }
             result.upper?.let { analysisMarkerIds.add(addMarker(it.frequencyHz).id) }
         }
+        val offset = direction.sign + formatDb(dropDb, 1)
         xdbResult.value = result
         xdbTrace.value = trace
         xdbMessage.value = when {
             result == null || result.foundCount == 0 ->
-                "未找到 -" + formatDb(dropDb, 1) + " 交叉点"
+                "未找到 " + offset + " 交叉点"
             result.foundCount == 1 -> {
                 val foundSide = if (result.lower != null) "左侧" else "右侧"
-                "只找到" + foundSide + " 1 个边沿（-" + formatDb(dropDb, 1) + "）"
+                "只找到" + foundSide + " 1 个边沿（" + offset + "）"
             }
             else ->
                 "已添加 2 个标记 · 带宽 " + formatFrequency(result.bandwidthHz ?: 0.0, 4) +

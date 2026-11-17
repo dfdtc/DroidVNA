@@ -21,7 +21,7 @@ This document records DroidVNA's current boundaries and future direction. For pr
 
 ## Validation status
 
-The reasons the current version is marked **beta**, plus hardware validation records, are in [Testing](TESTING.md) and the [0.7.2-beta release notes](release-notes/0.7.2-beta.md).
+Hardware validation records are in [Testing](TESTING.md); this release's changes are in the [0.7.4 release notes](release-notes/0.7.4.md). The two items still open (absolute accuracy of the 12-term SOLT, and the manual SOLT flow on hardware) are listed in the "Not yet verified" section of those notes.
 
 ## Next steps
 

@@ -113,6 +113,7 @@ internal object EnglishStrings {
         "已暂停" to "Paused",
         "缩放至全带宽" to "Zoom to full span",
         "复位圆图" to "Reset Smith chart",
+        "复位球图" to "Reset Smith sphere",
         "标记" to "Marker",
         "Y 自动" to "Y auto",
         "Y 手动" to "Y manual",

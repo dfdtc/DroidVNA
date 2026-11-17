@@ -27,6 +27,7 @@ DroidVNA 的文档按用途分开放置，README 只保留项目展示与声明�
 | 文档 | 内容 |
 | --- | --- |
 | [更新日志](../CHANGELOG.md) | 按版本汇总的变更（Keep a Changelog 格式） |
+| [0.7.4](release-notes/0.7.4.md) | Smith 圆图拖动修复、Smith 3D 球图、Smith 读数虚部/角度、`+X dB` 与谷值参考、`Δf` |
 | [0.7.2-beta](release-notes/0.7.2-beta.md) | B60 协议 extTrigger、移除 SA 复位、E-Cal 采集超时自适应 |
 | [0.7.1-beta](release-notes/0.7.1-beta.md) | 标记分析：带宽搜索、XdB 搜索、DTF 故障距离 |
 | [0.7.0-beta](release-notes/0.7.0-beta.md) | 完整 12 项 SOLT、隔离补测、未校准频段提示 |

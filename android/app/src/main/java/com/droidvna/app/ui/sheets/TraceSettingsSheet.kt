@@ -27,6 +27,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.droidvna.app.MainViewModel
+import com.droidvna.app.ui.chart.SmithReadout
+import com.droidvna.app.ui.components.ChoiceChip
 import com.droidvna.app.ui.components.SectionCard
 import com.droidvna.app.ui.components.SettingToggleRow
 import com.droidvna.app.ui.text.Text
@@ -42,6 +44,7 @@ fun TraceSettingsSheet(vm: MainViewModel) {
     val logAxis by vm.logFrequencyAxis.collectAsStateWithLifecycle()
     val autoY by vm.chartAutoY.collectAsStateWithLifecycle()
     val mode by vm.chartMode.collectAsStateWithLifecycle()
+    val readout by vm.smithReadout.collectAsStateWithLifecycle()
     val enabled by vm.enabledParams.collectAsStateWithLifecycle()
     val delta by vm.deltaMarkers.collectAsStateWithLifecycle()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -82,6 +85,22 @@ fun TraceSettingsSheet(vm: MainViewModel) {
                     subtitle = "关闭后锁定当前 Y 轴范围，与双击图表恢复自动等效。",
                     checked = autoY,
                 ) { vm.chartAutoY.value = it }
+            }
+
+            SectionCard(title = "Smith 读数") {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for (option in SmithReadout.entries) {
+                        ChoiceChip(option.label, readout == option) { vm.smithReadout.value = option }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Smith 圆图与球图里，标记和十字线读数在 |Γ| 之后显示的数字：" +
+                        "「虚部」给出 Γ 的虚部（点落在实轴上方还是下方），" +
+                        "「角度」给出 Γ 的相位角。两者描述的是同一个点。",
+                    color = VnaTextMuted,
+                    fontSize = 10.5.sp,
+                )
             }
 
             SectionCard(title = "当前迹线") {

@@ -21,15 +21,22 @@ This guide covers installing DroidVNA, connecting a device, touch gestures, UI s
 
 - **Y-axis auto / manual**: the `Y auto` button above the chart switches between auto and manual scaling; pinching the chart switches to manual, and one tap restores auto.
 - **Touch-first chart**:
-  - Pinch to zoom / pan (both axes); the Smith chart has its own zoom/pan viewport
+  - Pinch to zoom / pan (both axes); the Smith chart has its own zoom/pan viewport (two fingers here as well)
   - Tap or drag with one finger for cursor readout
   - Drag a marker line to change its frequency; tap `FIT` to restore the full span
-  - dB, phase, VSWR, and Smith chart display modes
+  - dB, phase, VSWR, Smith chart, and Smith 3D sphere display modes
+  - The Smith 3D sphere maps the reflection coefficient onto the Riemann sphere: `|Γ| < 1` on the southern hemisphere, `|Γ| > 1` on the northern one, which is what amplifier stability circles and source/load-pull contours that leave the unit circle need; a one-finger drag tumbles the sphere freely (past the poles, so the southern hemisphere can be turned to the front), pinch to zoom, double-tap to reset, and the far-side wireframe is drawn translucent
   - Trace settings can enable a **log frequency axis**, with 1-2-5 logarithmic ticks on X
-- **Markers**: add, drag, and delete freely; peak/valley search; dual-marker Δ difference.
+- **Markers**: add, drag, and delete freely; peak/valley search; dual-marker Δ readout (the amplitude
+  difference on every enabled trace plus a `Δf` frequency difference such as `Δf +768.750 MHz`; both
+  markers are quoted at the sweep point they actually read at, exactly like the marker cards).
+  On the Smith chart a marker (and the crosshair) prints a second number beside `|Γ|`: the **imaginary part** by
+  default (`Im −0.350`, signed, so you can see which side of the real axis the point is on), switchable to the
+  **angle** (`∠−45.0°`) in "Trace settings → Smith readout".
 - **Analysis**: the "Analysis ▾" menu next to the marker row provides three tools.
-  - **Bandwidth search**: use the peak or a custom cursor (an existing marker) on the selected S-parameter trace as the reference, find both edges at -X dB (default -3 dB), and add the two edge markers.
+  - **Bandwidth search**: use the peak, the valley, or a custom cursor (an existing marker) on the selected S-parameter trace as the reference, find both edges at ±X dB (default −3 dB), and add the two edge markers.
   - **XdB search**: the general form of bandwidth search, with a choice of left, right, or both sides; bandwidth search is the both-sides XdB search.
+  - **Search direction**: the `±` button in front of the depth field picks which side of the reference the edges lie on — `−` searches downwards (passband attenuation of a filter), `+` searches upwards (antenna bandwidth). Switching to `+` also moves the reference to "valley", because antenna bandwidth is measured upwards from the `|S11|` dip; switching back to `−` restores "peak". A both-sides `+X dB` search on `|S11|` gives the two −X dB relative-bandwidth edges.
   - **DTF (time domain / distance to fault)**: windowed IFFT of the S11 / S22 complex reflection, converted to fault distance using the velocity factor; configure the window, velocity factor, IFFT zero-padding, peak threshold, and cable-loss compensation, and get a distance-domain trace plus a fault table.
 
 ### UI and interaction
@@ -63,17 +70,17 @@ This guide covers installing DroidVNA, connecting a device, touch gestures, UI s
 
 ## Installation
 
-Prebuilt release APK (in the repository): [dist/DroidVNA-0.7.2-beta-release.apk](../../dist/DroidVNA-0.7.2-beta-release.apk)
+Prebuilt release APK (in the repository): [dist/DroidVNA-0.7.4-release.apk](../../dist/DroidVNA-0.7.4-release.apk)
 
 ```
-dist/DroidVNA-0.7.2-beta-release.apk
-size: 13,225,877 bytes
-SHA-256: 4A65646620BB4E835480B6D9E4E730540B34C0DACFBA6E9FCB1A6E55C0D59E39
-version: 0.7.2-beta (versionCode 11)
+dist/DroidVNA-0.7.4-release.apk
+size: 13,242,258 bytes
+SHA-256: A4385F331F201DF58B6B960FF40F78354386601AA256A122F3F9D3E229DA20D1
+version: 0.7.4 (versionCode 13)
 ```
 
 ```bash
-adb install -r dist/DroidVNA-0.7.2-beta-release.apk
+adb install -r dist/DroidVNA-0.7.4-release.apk
 ```
 
 You can also download the same version from the repository's **Releases** page. The APK is a release build signed with the project release key (certificate CN=Houran CHEN); re-signing with a different keystore prevents in-place upgrades, so uninstall first. See [Releasing](RELEASING.md) for the signing flow.

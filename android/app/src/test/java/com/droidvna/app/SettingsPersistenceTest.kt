@@ -32,6 +32,7 @@ class SettingsPersistenceTest {
             logFrequencyAxis = true,
             hideWatermark = true,
             chartMode = "SMITH",
+            smithReadout = "PHASE",
             enabledParams = setOf("S11", "S22"),
             chartAutoY = false,
             markerFreqs = listOf(1.5e9, 2.0e9),
@@ -153,6 +154,7 @@ class SettingsPersistenceTest {
         root.put("logFrequencyAxis", s.logFrequencyAxis)
         root.put("hideWatermark", s.hideWatermark)
         root.put("chartMode", s.chartMode)
+        root.put("smithReadout", s.smithReadout)
         root.put("enabledParams", org.json.JSONArray(s.enabledParams.toList()))
         root.put("chartAutoY", s.chartAutoY)
         root.put("markerFreqs", org.json.JSONArray(s.markerFreqs))
@@ -207,6 +209,7 @@ class SettingsPersistenceTest {
             logFrequencyAxis = root.optBoolean("logFrequencyAxis", defaults.logFrequencyAxis),
             hideWatermark = root.optBoolean("hideWatermark", defaults.hideWatermark),
             chartMode = root.optString("chartMode", defaults.chartMode),
+            smithReadout = root.optString("smithReadout", defaults.smithReadout),
             enabledParams = params?.takeIf { it.isNotEmpty() } ?: defaults.enabledParams,
             chartAutoY = root.optBoolean("chartAutoY", defaults.chartAutoY),
             markerFreqs = markerList ?: defaults.markerFreqs,

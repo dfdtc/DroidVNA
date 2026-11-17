@@ -109,4 +109,54 @@ class XdbSearchTest {
         assertNull(XdbSearch.search(freq, values, reference, 0.0, XdbSide.BOTH))
         assertNull(XdbSearch.search(freq, values, reference, -3.0, XdbSide.BOTH))
     }
+
+    @Test
+    fun valleyCursorFindsTheDipOfTheTrace() {
+        val freq = frequencies(7)
+        val values = levels(-2.0, -4.0, -8.0, -20.0, -8.0, -4.0, -2.0)
+        val reference = XdbSearch.valleyCursor(freq, values)
+        assertNotNull(reference)
+        assertEquals(3, reference!!.index)
+        assertEquals(4_000_000.0, reference.frequencyHz, 1e-6)
+        assertEquals(-20.0, reference.levelDb, 1e-6)
+    }
+
+    /**
+     * The antenna case: the reference is the dip of |S11| and the band edges sit *above* it, so
+     * a +3 dB search has to walk upwards on both sides. A −3 dB search from the same reference
+     * can never leave a dip, which is why the sign has to be a separate choice.
+     */
+    @Test
+    fun aboveDirectionFindsBothEdgesAroundAValley() {
+        val freq = frequencies(9)
+        val values = levels(-4.0, -8.0, -12.0, -16.0, -20.0, -16.0, -12.0, -8.0, -4.0)
+        val reference = XdbSearch.valleyCursor(freq, values)!!
+        assertEquals(4, reference.index)
+
+        val up = XdbSearch.search(freq, values, reference, 6.0, XdbSide.BOTH, XdbDirection.ABOVE)
+        assertNotNull(up)
+        assertEquals(XdbDirection.ABOVE, up!!.direction)
+        assertEquals(-14.0, up.targetLevelDb, 1e-6)
+        // -16 dB and -12 dB bracket the -14 dB target, so each crossing falls halfway between
+        // the samples that surround it. The dip sits on the 5 MHz sample (index 4), so the right
+        // edge is between the 6 MHz and 7 MHz samples, not between 5 and 6.
+        assertEquals(3_500_000.0, up.lower!!.frequencyHz, 1e-6)
+        assertEquals(6_500_000.0, up.upper!!.frequencyHz, 1e-6)
+        assertEquals(3_000_000.0, up.bandwidthHz!!, 1e-6)
+
+        // The same request pointing down leaves the dip in the wrong direction.
+        val down = XdbSearch.search(freq, values, reference, 6.0, XdbSide.BOTH, XdbDirection.BELOW)!!
+        assertEquals(0, down.foundCount)
+    }
+
+    @Test
+    fun defaultDirectionStaysBelowTheReference() {
+        val freq = frequencies(5)
+        val values = levels(-20.0, -10.0, 0.0, -10.0, -20.0)
+        val reference = XdbSearch.peakCursor(freq, values)!!
+        val result = XdbSearch.search(freq, values, reference, 3.0, XdbSide.BOTH)!!
+        assertEquals(XdbDirection.BELOW, result.direction)
+        assertEquals(-3.0, result.targetLevelDb, 1e-6)
+        assertEquals(2, result.foundCount)
+    }
 }
